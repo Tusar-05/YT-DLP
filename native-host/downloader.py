@@ -381,7 +381,8 @@ class DownloadManager:
         rate_limit = params.get("rate_limit") or load_config().get("rate_limit")
         if rate_limit:
             rate_limit_str = str(rate_limit).strip()
-            if re.match(r"^[0-9]+(\.[0-9]+)?[kKmMgG]?(B|b)?$", rate_limit_str) and not rate_limit_str.startswith("0"):
+            rate_match = re.match(r"^([0-9]+(\.[0-9]+)?)[kKmMgG]?(B|b)?$", rate_limit_str)
+            if rate_match and float(rate_match.group(1)) > 0:
                 args.extend(["--limit-rate", rate_limit_str])
 
         # Browser cookies extraction (if configured)
