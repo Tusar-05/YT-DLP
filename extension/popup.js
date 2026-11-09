@@ -1,11 +1,14 @@
 /**
  * popup.js — yt-dlp Extension popup controller.
  *
- * Coordinates with background.js to detect media, fetch metadata and formats,
+ * Coordinates with the Python Native Messaging host (directly and via
+ * background service worker) to detect media, fetch metadata and formats,
  * trigger downloads, stream real-time progress, and display download history.
  */
 
 (function () {
+  const HOST_NAME = "com.yt-dlp-extension.host";
+
   // DOM references
   const els = {
     settingsBtn: document.getElementById("settingsBtn"),
@@ -56,23 +59,119 @@
   let activeDownloadId = null;
 
   // ------------------------------------------------------------------ //
-  // Communication via background service worker
+  // Direct Native Messaging Channel
   // ------------------------------------------------------------------ //
-  function sendMsg(action, payload) {
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ action, payload }, (response) => {
-        if (chrome.runtime.lastError) {
-          return reject(new Error(chrome.runtime.lastError.message));
-        }
-        if (!response) {
-          return reject(new Error("No response from background worker"));
-        }
-        if (!response.ok) {
-          return reject(new Error(response.error || "Operation failed"));
-        }
-        resolve(response);
-      });
+  let directPort = null;
+  const directPending = new Map(); // req_id -> { resolve, reject }
+
+  function getDirectPort() {
+    if (directPort) return directPort;
+
+    try {
+      directPort = chrome.runtime.connectNative(HOST_NAME);
+    } catch (err) {
+      directPort = null;
+      throw err;
+    }
+
+    directPort.onMessage.addListener(onDirectMessage);
+    directPort.onDisconnect.addListener(() => {
+      const err = chrome.runtime.lastError?.message || "Native host disconnected";
+      directPort = null;
+      for (const waiter of directPending.values()) {
+        waiter.reject(new Error(err));
+      }
+      directPending.clear();
     });
+
+    return directPort;
+  }
+
+  function onDirectMessage(msg) {
+    if (!msg || typeof msg !== "object") return;
+
+    const reqId = msg.req_id;
+    if (reqId && directPending.has(reqId)) {
+      const waiter = directPending.get(reqId);
+      directPending.delete(reqId);
+      if (msg.type === "error" || msg.ok === false) {
+        waiter.reject(new Error(msg.message || msg.error || "Operation failed"));
+      } else {
+        waiter.resolve(msg);
+      }
+      return;
+    }
+
+    // Direct stream events (if download was initiated directly)
+    if (msg.type === "progress") {
+      activeDownloadId = msg.download_id;
+      renderActiveProgress(msg);
+    } else if (msg.type === "download_complete") {
+      setStatus("Download complete!", false);
+      hideActiveDownload();
+      refreshState();
+    } else if (msg.type === "download_failed") {
+      const err = msg.error || "Download failed";
+      setStatus(msg.status === "cancelled" ? "Download cancelled." : "Download failed: " + err, true);
+      hideActiveDownload();
+      refreshState();
+    }
+  }
+
+  function sendDirectNative(msg) {
+    let port;
+    try {
+      port = getDirectPort();
+    } catch (err) {
+      return Promise.reject(err);
+    }
+
+    return new Promise((resolve, reject) => {
+      const reqId = msg.req_id || crypto.randomUUID?.() || Math.random().toString(36).slice(2);
+      msg.req_id = reqId;
+      directPending.set(reqId, { resolve, reject });
+      try {
+        port.postMessage(msg);
+      } catch (err) {
+        directPending.delete(reqId);
+        reject(err);
+      }
+    });
+  }
+
+  // ------------------------------------------------------------------ //
+  // Background Worker Coordination
+  // ------------------------------------------------------------------ //
+  function sendBackground(action, payload) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage({ action, payload }, (response) => {
+          if (chrome.runtime.lastError) {
+            return reject(new Error(chrome.runtime.lastError.message));
+          }
+          if (!response) {
+            return reject(new Error("No response from background worker"));
+          }
+          if (!response.ok) {
+            return reject(new Error(response.error || "Operation failed"));
+          }
+          resolve(response);
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  // Dual-mode requester: prefers background worker, falls back to direct native port
+  async function requestNative(payload) {
+    try {
+      const res = await sendBackground("nativeRequest", payload);
+      return res.data;
+    } catch (bgErr) {
+      // Background worker failed or not reloaded yet -> use direct native port
+      return await sendDirectNative(payload);
+    }
   }
 
   // Listen to background worker broadcast events
@@ -169,7 +268,7 @@
   // ------------------------------------------------------------------ //
   async function refreshState() {
     try {
-      const res = await sendMsg("getDownloadsState");
+      const res = await sendBackground("getDownloadsState");
       if (res.active && res.active.length > 0) {
         const top = res.active[0];
         activeDownloadId = top.download_id;
@@ -177,15 +276,15 @@
       }
       renderHistory(res.history || []);
     } catch {
-      // background not ready yet
+      // background worker not active yet
     }
   }
 
   async function loadDefaultConfig() {
     try {
-      const res = await sendMsg("nativeRequest", { type: "config", action: "get" });
-      if (res.ok && res.data?.data) {
-        const cfg = res.data.data;
+      const res = await requestNative({ type: "config", action: "get" });
+      if (res && res.data) {
+        const cfg = res.data;
         if (cfg.download_dir) {
           els.downloadDir.placeholder = cfg.download_dir;
           if (!els.downloadDir.value) els.downloadDir.value = cfg.download_dir;
@@ -208,7 +307,6 @@
       if (!tab || !tab.url) return;
       const url = tab.url.trim();
 
-      // Ignore browser internal schemes
       if (!url.startsWith("http://") && !url.startsWith("https://")) {
         return;
       }
@@ -235,9 +333,9 @@
     els.downloadBtn.disabled = true;
 
     try {
-      // Single call to get both metadata and available formats!
-      const res = await sendMsg("nativeRequest", { type: "media_info", url });
-      const data = res.data?.data;
+      // Use resilient native request (direct or via background)
+      const res = await requestNative({ type: "media_info", url });
+      const data = res?.data;
       if (!data) throw new Error("No media information returned");
 
       currentMediaData = data;
@@ -279,7 +377,12 @@
       els.optionsCard.style.display = "block";
       els.downloadBtn.disabled = false;
     } catch (err) {
-      setStatus("Failed to load info: " + err.message, true);
+      const msg = err.message || "Unknown error";
+      if (msg.includes("Specified native messaging host not found") || msg.includes("Access to the specified native messaging host is forbidden")) {
+        setStatus("Host registration error: Please run ./scripts/install.sh <EXTENSION_ID>", true);
+      } else {
+        setStatus("Failed to load info: " + msg, true);
+      }
     } finally {
       els.loadingSpinner.style.display = "none";
     }
@@ -297,7 +400,6 @@
     const priority = [2160, 1440, 1080, 720, 480, 360, 240, 144];
     const added = new Set();
 
-    // Default "Best"
     const bestOpt = document.createElement("option");
     bestOpt.value = "best";
     bestOpt.textContent = "Best Available Quality";
@@ -313,7 +415,6 @@
       }
     }
 
-    // Add any remaining heights
     const remaining = [...heights].filter(h => !added.has(h)).sort((a, b) => b - a);
     for (const h of remaining) {
       const opt = document.createElement("option");
@@ -387,8 +488,18 @@
     els.downloadBtn.textContent = "Starting…";
 
     try {
-      const res = await sendMsg("startDownload", params);
-      activeDownloadId = res.download_id;
+      let downloadId;
+      try {
+        // Prefer starting through background worker for cross-popup tracking
+        const res = await sendBackground("startDownload", params);
+        downloadId = res.download_id;
+      } catch (bgErr) {
+        // Fall back to direct native port
+        const res = await sendDirectNative(params);
+        downloadId = res.download_id;
+      }
+
+      activeDownloadId = downloadId;
       renderActiveProgress({
         title: params.title,
         percent: 0,
@@ -409,7 +520,11 @@
     els.cancelActiveBtn.textContent = "Cancelling…";
 
     try {
-      await sendMsg("cancelDownload", { download_id: activeDownloadId });
+      try {
+        await sendBackground("cancelDownload", { download_id: activeDownloadId });
+      } catch {
+        await sendDirectNative({ type: "cancel", download_id: activeDownloadId });
+      }
       setStatus("Download cancelled.", false);
       hideActiveDownload();
       refreshState();
@@ -437,11 +552,15 @@
   els.cancelActiveBtn.addEventListener("click", cancelActiveDownload);
 
   els.settingsBtn.addEventListener("click", () => {
-    sendMsg("openOptions");
+    chrome.runtime.openOptionsPage();
   });
 
   els.clearHistoryBtn.addEventListener("click", async () => {
-    await sendMsg("clearHistory");
+    try {
+      await sendBackground("clearHistory");
+    } catch {
+      // ignore
+    }
     renderHistory([]);
   });
 
