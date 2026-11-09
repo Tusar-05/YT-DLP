@@ -73,11 +73,57 @@
         </select>
       </section>
 
+      <!-- Network & Authentication -->
+      <section class="card">
+        <div class="section-title">Network & Authentication</div>
+        <p class="hint">Configure download resilience, speed throttle, and browser cookies.</p>
+
+        <div style="margin-top:10px">
+          <label class="field-label" style="font-size:12px; font-weight:600; display:block; margin-bottom:4px">Download Speed Limit</label>
+          <select id="rateLimitSelect">
+            <option value="">Unlimited (Max speed)</option>
+            <option value="1M">1 MB/s</option>
+            <option value="2.5M">2.5 MB/s</option>
+            <option value="5M">5 MB/s</option>
+            <option value="10M">10 MB/s</option>
+          </select>
+        </div>
+
+        <div style="margin-top:12px">
+          <label class="field-label" style="font-size:12px; font-weight:600; display:block; margin-bottom:4px">Browser Cookies (for Age-Gated / Member Videos)</label>
+          <select id="cookiesBrowserSelect">
+            <option value="">None (Public content only)</option>
+            <option value="chromium">Chromium</option>
+            <option value="chrome">Google Chrome</option>
+            <option value="brave">Brave</option>
+            <option value="firefox">Firefox</option>
+            <option value="edge">Microsoft Edge</option>
+            <option value="opera">Opera</option>
+            <option value="vivaldi">Vivaldi</option>
+          </select>
+          <p class="hint" style="margin-top:4px; font-size:11px">Passes cookies from the chosen browser to yt-dlp to access age-restricted or login-only videos.</p>
+        </div>
+
+        <div style="margin-top:12px">
+          <label class="field-label" style="font-size:12px; font-weight:600; display:block; margin-bottom:4px">Default Subtitle Language</label>
+          <select id="defaultSubtitleLangSelect">
+            <option value="en">English (en)</option>
+            <option value="es">Spanish (es)</option>
+            <option value="fr">French (fr)</option>
+            <option value="de">German (de)</option>
+            <option value="ja">Japanese (ja)</option>
+            <option value="zh">Chinese (zh)</option>
+            <option value="en.*">Auto-generated English (en.*)</option>
+            <option value="all">All Available</option>
+          </select>
+        </div>
+      </section>
+
       <!-- Host & Tool Information -->
       <section class="card">
         <div class="section-title">Backend Status & Versions</div>
         <div class="info-table">
-          <div class="info-row"><span class="info-label">Host Name:</span> <code>com.yt-dlp-extension.host</code></div>
+          <div class="info-row"><span class="info-label">Host Name:</span> <code>com.yt_dlp_extension.host</code></div>
           <div class="info-row"><span class="info-label">Host Path:</span> <code id="hostPath">detecting…</code></div>
           <div class="info-row"><span class="info-label">yt-dlp:</span> <span id="ytdlpVersion" class="badge">checking…</span></div>
           <div class="info-row"><span class="info-label">FFmpeg:</span> <span id="ffmpegVersion" class="badge">checking…</span></div>

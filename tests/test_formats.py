@@ -97,6 +97,26 @@ class TestFormats(unittest.TestCase):
         self.assertIn("H.264", info["formats"]["codecs"])
         self.assertIn("VP9", info["formats"]["codecs"])
 
+    @patch("subprocess.run")
+    def test_run_yt_dlp_json_cookies_browser_sanitization(self, mock_subproc):
+        from formats import _run_yt_dlp_json
+        mock_res = mock_subproc.return_value
+        mock_res.returncode = 0
+        mock_res.stdout = '{"title": "Test Video"}\n'
+
+        # Valid browser in config
+        with patch("formats.load_config", return_value={"cookies_from_browser": "brave"}):
+            _run_yt_dlp_json("https://example.com/test")
+            args = mock_subproc.call_args[0][0]
+            self.assertIn("--cookies-from-browser", args)
+            self.assertIn("brave", args)
+
+        # Invalid browser should be ignored
+        with patch("formats.load_config", return_value={"cookies_from_browser": "bad;browser"}):
+            _run_yt_dlp_json("https://example.com/test")
+            args = mock_subproc.call_args[0][0]
+            self.assertNotIn("--cookies-from-browser", args)
+
 
 if __name__ == "__main__":
     unittest.main()

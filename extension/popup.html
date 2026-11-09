@@ -145,6 +145,27 @@
           </label>
         </div>
 
+        <!-- Collapsible playlist items input -->
+        <div id="playlistOptions" style="display:none; margin-top:8px;">
+          <label class="field-label" style="font-size:11px">Playlist Items (e.g. 1-5, 8, 10-12 or blank for all)</label>
+          <input type="text" id="playlistItemsInput" placeholder="1-5, 8, 10-12" style="font-size:12px; padding:6px 10px;" />
+        </div>
+
+        <!-- Collapsible subtitle language dropdown -->
+        <div id="subtitlesOptions" style="display:none; margin-top:8px;">
+          <label class="field-label" style="font-size:11px">Subtitle Language</label>
+          <select id="subtitleLangSelect" style="font-size:12px; padding:6px 10px;">
+            <option value="en" selected>English (en)</option>
+            <option value="es">Spanish (es)</option>
+            <option value="fr">French (fr)</option>
+            <option value="de">German (de)</option>
+            <option value="ja">Japanese (ja)</option>
+            <option value="zh">Chinese (zh)</option>
+            <option value="en.*">Auto-generated English (en.*)</option>
+            <option value="all">All Available Languages</option>
+          </select>
+        </div>
+
         <div class="field-row" style="margin-top:10px">
           <label class="field-label">Save Location</label>
           <div class="path-row">

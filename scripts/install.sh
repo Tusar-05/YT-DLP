@@ -21,7 +21,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-HOST_NAME="com.yt-dlp-extension.host"
+HOST_NAME="com.yt_dlp_extension.host"
+OLD_HOST_NAME="com.yt-dlp-extension.host"
 HOST_SCRIPT="$REPO_ROOT/native-host/host.py"
 HOST_MANIFEST_TEMPLATE="$REPO_ROOT/native-host/native-host-manifest.json"
 EXTENSION_ID="${1:-}"
@@ -78,14 +79,16 @@ browser_configs=(
 
 # If no extension ID provided as argument, check if an existing manifest already has an ID
 if [[ -z "$EXTENSION_ID" ]]; then
-  existing_manifest="$HOME/.config/chromium/NativeMessagingHosts/$HOST_NAME.json"
-  if [[ -f "$existing_manifest" ]]; then
-    detected_id="$(grep -o 'chrome-extension://[a-z]*/' "$existing_manifest" | head -1 | sed 's|chrome-extension://||;s|/||' || true)"
-    if [[ -n "$detected_id" ]]; then
-      EXTENSION_ID="$detected_id"
-      echo "   detected existing extension ID: $EXTENSION_ID"
+  for m in "$HOME/.config/chromium/NativeMessagingHosts/$HOST_NAME.json" "$HOME/.config/chromium/NativeMessagingHosts/$OLD_HOST_NAME.json"; do
+    if [[ -f "$m" ]]; then
+      detected_id="$(grep -o 'chrome-extension://[a-z]*/' "$m" | head -1 | sed 's|chrome-extension://||;s|/||' || true)"
+      if [[ -n "$detected_id" ]]; then
+        EXTENSION_ID="$detected_id"
+        echo "   detected existing extension ID: $EXTENSION_ID"
+        break
+      fi
     fi
-  fi
+  done
 fi
 
 if [[ -n "$EXTENSION_ID" ]]; then
@@ -108,7 +111,7 @@ for entry in "${browser_configs[@]}"; do
 
   # Register if directory exists OR if browser binary is installed on PATH
   if [[ -d "$dir" ]] || have "$binary"; then
-    if ( mkdir -p "$dir/NativeMessagingHosts" && printf '%s\n' "$manifest" > "$dir/NativeMessagingHosts/$HOST_NAME.json" ) 2>/dev/null; then
+    if ( mkdir -p "$dir/NativeMessagingHosts" && rm -f "$dir/NativeMessagingHosts/$OLD_HOST_NAME.json" && printf '%s\n' "$manifest" > "$dir/NativeMessagingHosts/$HOST_NAME.json" ) 2>/dev/null; then
       echo "   registered in $dir/NativeMessagingHosts/$HOST_NAME.json"
       registered=$((registered + 1))
     fi
@@ -116,12 +119,24 @@ for entry in "${browser_configs[@]}"; do
 done
 
 if [[ $registered -eq 0 ]]; then
-  if ( mkdir -p "$HOME/.config/chromium/NativeMessagingHosts" && printf '%s\n' "$manifest" > "$HOME/.config/chromium/NativeMessagingHosts/$HOST_NAME.json" ) 2>/dev/null; then
+  if ( mkdir -p "$HOME/.config/chromium/NativeMessagingHosts" && rm -f "$HOME/.config/chromium/NativeMessagingHosts/$OLD_HOST_NAME.json" && printf '%s\n' "$manifest" > "$HOME/.config/chromium/NativeMessagingHosts/$HOST_NAME.json" ) 2>/dev/null; then
     echo "   registered in default: $HOME/.config/chromium/NativeMessagingHosts/$HOST_NAME.json"
     registered=1
   else
     echo "   Notice: $HOME/.config is currently read-only in this subshell."
     echo "   Run './scripts/install.sh $EXTENSION_ID' in your host terminal if needed."
+  fi
+fi
+
+# --- register for Firefox if firefox is available ---------------------------
+
+FIREFOX_MANIFEST_TEMPLATE="$REPO_ROOT/native-host/firefox-host-manifest.json"
+if [[ -f "$FIREFOX_MANIFEST_TEMPLATE" ]]; then
+  firefox_manifest="$(sed -e "s|__HOST_PATH__|$HOST_SCRIPT|g" "$FIREFOX_MANIFEST_TEMPLATE")"
+  if have firefox || [[ -d "$HOME/.mozilla" ]]; then
+    if ( mkdir -p "$HOME/.mozilla/native-messaging-hosts" && rm -f "$HOME/.mozilla/native-messaging-hosts/$OLD_HOST_NAME.json" && printf '%s\n' "$firefox_manifest" > "$HOME/.mozilla/native-messaging-hosts/$HOST_NAME.json" ) 2>/dev/null; then
+      echo "   registered for Firefox: $HOME/.mozilla/native-messaging-hosts/$HOST_NAME.json"
+    fi
   fi
 fi
 

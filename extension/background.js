@@ -1,12 +1,12 @@
 /**
  * background.js — Service worker for the yt-dlp Extension.
  *
- * Manages the Native Messaging connection to `com.yt-dlp-extension.host`,
+ * Manages the Native Messaging connection to `com.yt_dlp_extension.host`,
  * routes requests from popup and options pages, persists download history,
  * and maintains download lifecycle so downloads survive popup closure.
  */
 
-const HOST_NAME = "com.yt-dlp-extension.host";
+const HOST_NAME = "com.yt_dlp_extension.host";
 
 let nativePort = null;
 const pendingRequests = new Map(); // req_id -> { resolve, reject, timer }
@@ -24,6 +24,12 @@ chrome.storage.local.get(["downloadHistory"], (res) => {
 
 function saveHistory() {
   chrome.storage.local.set({ downloadHistory: downloadHistory.slice(0, 50) });
+}
+
+function addHistoryRecord(record) {
+  if (!record || !record.download_id) return;
+  downloadHistory = [record, ...downloadHistory.filter((h) => h.download_id !== record.download_id)].slice(0, 50);
+  saveHistory();
 }
 
 function getNativePort() {
@@ -123,8 +129,7 @@ function onNativeMessage(msg) {
       record.completedAt = Date.now();
 
       activeDownloads.delete(id);
-      downloadHistory.unshift(record);
-      saveHistory();
+      addHistoryRecord(record);
 
       // Show indicator on extension badge
       chrome.action.setBadgeText({ text: "✓" });
@@ -143,8 +148,15 @@ function onNativeMessage(msg) {
       record.failedAt = Date.now();
 
       activeDownloads.delete(id);
-      downloadHistory.unshift(record);
-      saveHistory();
+
+      // If already recorded (e.g. from cancelDownload), update existing record rather than duplicate
+      const existing = downloadHistory.find((h) => h.download_id === id);
+      if (existing && record.status === "cancelled") {
+        existing.error = msg.error || existing.error || "cancelled";
+        saveHistory();
+      } else {
+        addHistoryRecord(record);
+      }
 
       if (record.status !== "cancelled") {
         chrome.action.setBadgeText({ text: "!" });
@@ -213,8 +225,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const rec = activeDownloads.get(id);
           rec.status = "cancelled";
           activeDownloads.delete(id);
-          downloadHistory.unshift(rec);
-          saveHistory();
+          addHistoryRecord(rec);
         }
         sendResponse({ ok: true, data: res });
       })

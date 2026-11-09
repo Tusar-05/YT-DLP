@@ -99,6 +99,105 @@ class TestDownloader(unittest.TestCase):
         self.assertEqual(args[-2], "--")
         self.assertEqual(args[-1], "https://example.com/video")
 
+    def test_build_args_subtitles_and_playlist_items(self):
+        mgr = DownloadManager(lambda m: None)
+        record = DownloadRecord("id-3", "https://example.com/playlist", {})
+        params = {
+            "mode": "video",
+            "playlist": True,
+            "playlist_items": "1-3,5",
+            "subtitles": True,
+            "subtitle_langs": "en,es",
+        }
+        args = mgr._build_args(record, "video", "/tmp/dl", params)
+        self.assertIn("--yes-playlist", args)
+        self.assertIn("--playlist-items", args)
+        self.assertIn("1-3,5", args)
+        self.assertIn("--write-subs", args)
+        self.assertIn("--sub-langs", args)
+        self.assertIn("en,es", args)
+
+    def test_build_args_resilience_and_rate_limit(self):
+        mgr = DownloadManager(lambda m: None)
+        record = DownloadRecord("id-4", "https://example.com/video", {})
+        params = {
+            "mode": "video",
+            "rate_limit": "2.5M",
+        }
+        args = mgr._build_args(record, "video", "/tmp/dl", params)
+        self.assertIn("--continue", args)
+        self.assertIn("--retries", args)
+        self.assertIn("3", args)
+        self.assertIn("--fragment-retries", args)
+        self.assertIn("--limit-rate", args)
+        self.assertIn("2.5M", args)
+
+    def test_build_args_cookies_browser_sanitization(self):
+        mgr = DownloadManager(lambda m: None)
+        record = DownloadRecord("id-5", "https://example.com/video", {})
+        # Valid browser
+        params_valid = {"cookies_from_browser": "firefox"}
+        args_valid = mgr._build_args(record, "video", "/tmp/dl", params_valid)
+        self.assertIn("--cookies-from-browser", args_valid)
+        self.assertIn("firefox", args_valid)
+
+        # Invalid/unrecognized browser should be ignored for security
+        params_invalid = {"cookies_from_browser": "malicious;rm -rf"}
+        args_invalid = mgr._build_args(record, "video", "/tmp/dl", params_invalid)
+        self.assertNotIn("--cookies-from-browser", args_invalid)
+
+    def test_build_args_rate_limit_edge_cases_and_zero(self):
+        mgr = DownloadManager(lambda m: None)
+        record = DownloadRecord("id-rl", "https://example.com/video", {})
+
+        # Zero and 0M should be ignored
+        for zero_val in ("0", "0M", "0k"):
+            args = mgr._build_args(record, "video", "/tmp/dl", {"rate_limit": zero_val})
+            self.assertNotIn("--limit-rate", args)
+
+        # Malformed strings should be ignored
+        for bad_val in ("malicious; rm -rf /", "-5M", "abc", "100.200.300M"):
+            args = mgr._build_args(record, "video", "/tmp/dl", {"rate_limit": bad_val})
+            self.assertNotIn("--limit-rate", args)
+
+    def test_build_args_playlist_items_injection_blocked(self):
+        mgr = DownloadManager(lambda m: None)
+        record = DownloadRecord("id-pl", "https://example.com/playlist", {})
+
+        # Malformed playlist_items or items without digits should be omitted
+        for bad_items in ("1-5; rm -rf /", "--", "::", "---", "--exec calc"):
+            args = mgr._build_args(record, "video", "/tmp/dl", {"playlist": True, "playlist_items": bad_items})
+            self.assertNotIn("--playlist-items", args)
+
+        # Valid items with digits and ranges should be accepted
+        for good_items in ("1-5", "1, 3, 5-8", ":5", "10:"):
+            args = mgr._build_args(record, "video", "/tmp/dl", {"playlist": True, "playlist_items": good_items})
+            self.assertIn("--playlist-items", args)
+            self.assertIn(good_items, args)
+
+    def test_build_args_subtitles_injection_and_fallback(self):
+        mgr = DownloadManager(lambda m: None)
+        record = DownloadRecord("id-sub", "https://example.com/video", {})
+
+        # Injection attempts starting with hyphen or containing spaces/semicolons should fall back to 'all'
+        for bad_lang in ("--some-flag", "-v", "en; rm -rf", "invalid$lang"):
+            args = mgr._build_args(record, "video", "/tmp/dl", {"subtitles": True, "subtitle_langs": bad_lang})
+            self.assertIn("--write-subs", args)
+            self.assertIn("--sub-langs", args)
+            idx = args.index("--sub-langs")
+            self.assertEqual(args[idx + 1], "all")
+
+        # Empty string should fall back to default subtitle_langs ("en")
+        args_empty = mgr._build_args(record, "video", "/tmp/dl", {"subtitles": True, "subtitle_langs": ""})
+        idx = args_empty.index("--sub-langs")
+        self.assertEqual(args_empty[idx + 1], "en")
+
+        # Valid languages should be preserved
+        for good_lang in ("en", "es", "en.*", "zh-Hans,zh-Hant", "pt_BR"):
+            args = mgr._build_args(record, "video", "/tmp/dl", {"subtitles": True, "subtitle_langs": good_lang})
+            idx = args.index("--sub-langs")
+            self.assertEqual(args[idx + 1], good_lang)
+
 
 if __name__ == "__main__":
     unittest.main()

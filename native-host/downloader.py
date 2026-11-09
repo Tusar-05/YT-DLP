@@ -12,6 +12,7 @@ import re
 import signal
 import subprocess
 import threading
+import time
 import uuid
 from typing import Any, Callable, Optional
 
@@ -55,6 +56,7 @@ class DownloadRecord:
         self._process: Optional[subprocess.Popen] = None
         self._thread: Optional[threading.Thread] = None
         self._cancelled = threading.Event()
+        self.last_notify_time: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -107,7 +109,7 @@ class DownloadManager:
         return download_id
 
     def cancel_download(self, download_id: str) -> bool:
-        """Request cancellation of an in-flight download."""
+        """Request cancellation of an in-flight download with SIGKILL escalation."""
         with self._lock:
             record = self._downloads.get(download_id)
         if record is None:
@@ -116,14 +118,35 @@ class DownloadManager:
         proc = record._process
         if proc is not None and proc.poll() is None:
             try:
-                # Terminate the process group to ensure ffmpeg and sub-processes are killed
-                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                pgid = os.getpgid(proc.pid)
+                os.killpg(pgid, signal.SIGTERM)
+
+                # Escalate to SIGKILL if process group does not terminate within 2.5s
+                def _escalate():
+                    time.sleep(2.5)
+                    if proc.poll() is None:
+                        try:
+                            os.killpg(pgid, signal.SIGKILL)
+                        except (ProcessLookupError, OSError):
+                            pass
+
+                threading.Thread(target=_escalate, daemon=True).start()
             except (ProcessLookupError, OSError):
                 try:
                     proc.terminate()
                 except Exception:
                     pass
         return True
+
+    def shutdown(self) -> None:
+        """Cancel all in-flight downloads and terminate process groups on shutdown."""
+        with self._lock:
+            active_ids = [d_id for d_id, rec in self._downloads.items() if rec.status in ("starting", "running")]
+        for d_id in active_ids:
+            try:
+                self.cancel_download(d_id)
+            except Exception:
+                pass
 
     def get_record(self, download_id: str) -> Optional[dict[str, Any]]:
         with self._lock:
@@ -183,7 +206,10 @@ class DownloadManager:
                 kind, value = parsed
                 if kind == "progress":
                     self._apply_progress(record, value)
-                    self._notify_progress(record)
+                    now = time.time()
+                    if (now - record.last_notify_time >= 0.25) or (record.percent >= 100.0):
+                        record.last_notify_time = now
+                        self._notify_progress(record)
                 elif kind == "filepath":
                     filepath = value
                 elif kind == "title":
@@ -256,6 +282,11 @@ class DownloadManager:
             "--no-colors",
             "--no-exec",
             "--no-exec-before-download",
+            "--continue",
+            "--retries",
+            "3",
+            "--fragment-retries",
+            "3",
             "--progress",
             "--newline",
             "--progress-template",
@@ -268,8 +299,26 @@ class DownloadManager:
             output_template,
         ]
 
+        # Rate limiting (if configured)
+        rate_limit = params.get("rate_limit") or load_config().get("rate_limit")
+        if rate_limit:
+            rate_limit_str = str(rate_limit).strip()
+            if re.match(r"^[0-9]+(\.[0-9]+)?[kKmMgG]?(B|b)?$", rate_limit_str) and not rate_limit_str.startswith("0"):
+                args.extend(["--limit-rate", rate_limit_str])
+
+        # Browser cookies extraction (if configured)
+        cookies_browser = params.get("cookies_from_browser") or load_config().get("cookies_from_browser")
+        if cookies_browser:
+            browser_name = str(cookies_browser).strip().lower()
+            if browser_name in ("chrome", "chromium", "brave", "firefox", "edge", "opera", "vivaldi"):
+                args.extend(["--cookies-from-browser", browser_name])
+
         if is_playlist:
             args.append("--yes-playlist")
+            if params.get("playlist_items"):
+                items = str(params["playlist_items"]).strip()
+                if re.match(r"^[0-9,: \-]+$", items) and any(c.isdigit() for c in items):
+                    args.extend(["--playlist-items", items])
         else:
             args.append("--no-playlist")
 
@@ -315,7 +364,11 @@ class DownloadManager:
             args.extend(["--merge-output-format", str(container)])
 
         if params.get("subtitles"):
-            args.extend(["--write-subs", "--sub-langs", "all"])
+            sub_langs = str(params.get("subtitle_langs") or load_config().get("subtitle_langs") or "all").strip()
+            if re.match(r"^[a-zA-Z0-9*][a-zA-Z0-9,\.\-*_]*$", sub_langs) and not sub_langs.startswith("-"):
+                args.extend(["--write-subs", "--sub-langs", sub_langs])
+            else:
+                args.extend(["--write-subs", "--sub-langs", "all"])
 
         if params.get("thumbnail"):
             args.append("--write-thumbnail")

@@ -89,6 +89,78 @@ class TestDownloadExecution(unittest.TestCase):
         fail_msg = next(m for m in messages if m["type"] == "download_failed")
         self.assertEqual(fail_msg["status"], "cancelled")
 
+    def test_manager_shutdown_cancels_active(self):
+        manager = DownloadManager(send_message=lambda m: None)
+        record1 = DownloadRecord("dl-active-1", "https://example.com/1", {})
+        record1.status = "running"
+        record2 = DownloadRecord("dl-done-2", "https://example.com/2", {})
+        record2.status = "completed"
+
+        with manager._lock:
+            manager._downloads["dl-active-1"] = record1
+            manager._downloads["dl-done-2"] = record2
+
+        with patch.object(manager, "cancel_download") as mock_cancel:
+            manager.shutdown()
+            mock_cancel.assert_called_once_with("dl-active-1")
+
+    def test_run_download_progress_throttled(self):
+        messages = []
+        manager = DownloadManager(send_message=messages.append)
+        record = DownloadRecord("dl-mock-throttle", "https://example.com/test", {})
+
+        fake_lines = [
+            "YTDL_PROGRESS\t10.0%\t1.0MiB/s\t00:10\n",
+            "YTDL_PROGRESS\t11.0%\t1.0MiB/s\t00:10\n",
+            "YTDL_PROGRESS\t12.0%\t1.0MiB/s\t00:10\n",
+            "YTDL_PROGRESS\t100.0%\t2.0MiB/s\t00:00\n",
+            "after_move:YTDL_FILEPATH\t/tmp/downloads/video.mp4\n",
+        ]
+
+        mock_proc = MagicMock()
+        mock_proc.stdout = fake_lines
+        mock_proc.stderr = MagicMock()
+        mock_proc.stderr.read.return_value = ""
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = 0
+
+        times = [1000.0, 1000.05, 1000.10, 1000.15]
+        with patch("subprocess.Popen", return_value=mock_proc), \
+             patch("time.time", side_effect=times):
+            manager._run_download(record, "video", "/tmp/downloads", {})
+
+        progress_msgs = [m for m in messages if m["type"] == "progress"]
+        self.assertEqual(len(progress_msgs), 2)
+        self.assertEqual(progress_msgs[0]["percent"], 10.0)
+        self.assertEqual(progress_msgs[1]["percent"], 100.0)
+
+    def test_cancel_download_watchdog_escalates_to_sigkill(self):
+        import signal
+        manager = DownloadManager(send_message=lambda m: None)
+        record = DownloadRecord("dl-kill-1", "https://example.com/test", {})
+
+        mock_proc = MagicMock()
+        mock_proc.pid = 9876
+        mock_proc.poll.return_value = None
+        record._process = mock_proc
+
+        with manager._lock:
+            manager._downloads["dl-kill-1"] = record
+
+        killed_signals = []
+        def fake_killpg(pgid, sig):
+            killed_signals.append((pgid, sig))
+
+        with patch("os.getpgid", return_value=9876), \
+             patch("os.killpg", side_effect=fake_killpg), \
+             patch("time.sleep", return_value=None):
+            ok = manager.cancel_download("dl-kill-1")
+            self.assertTrue(ok)
+            time.sleep(0.05)
+
+        self.assertIn((9876, signal.SIGTERM), killed_signals)
+        self.assertIn((9876, signal.SIGKILL), killed_signals)
+
 
 if __name__ == "__main__":
     unittest.main()

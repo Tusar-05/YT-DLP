@@ -26,7 +26,7 @@ from config import DEFAULT_DOWNLOAD_DIR, load_config, save_config  # noqa: E402
 from downloader import DownloadManager  # noqa: E402
 from formats import discover_formats, get_media_info, is_video_url  # noqa: E402
 
-HOST_NAME = "com.yt-dlp-extension.host"
+HOST_NAME = "com.yt_dlp_extension.host"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -262,32 +262,34 @@ def main() -> None:
     log.info("Native messaging host %s starting", HOST_NAME)
     manager = DownloadManager(send_message)
 
-    while not SHUTDOWN.is_set():
-        message = read_message()
-        if message is None:
-            break  # EOF / browser disconnected
+    try:
+        while not SHUTDOWN.is_set():
+            message = read_message()
+            if message is None:
+                break  # EOF / browser disconnected
 
-        if not isinstance(message, dict):
-            send_error("invalid_request", "message must be a JSON object")
-            continue
+            if not isinstance(message, dict):
+                send_error("invalid_request", "message must be a JSON object")
+                continue
 
-        msg_type = message.get("type")
-        req_id = message.get("req_id")
-        handler = HANDLERS.get(msg_type)
-        if handler is None:
-            send_error("unknown_type", f"unknown message type: {msg_type!r}", req_id)
-            continue
+            msg_type = message.get("type")
+            req_id = message.get("req_id")
+            handler = HANDLERS.get(msg_type)
+            if handler is None:
+                send_error("unknown_type", f"unknown message type: {msg_type!r}", req_id)
+                continue
 
-        try:
-            if msg_type in ("download", "cancel", "list"):
-                handler(message, manager)
-            else:
-                handler(message)
-        except Exception as exc:  # noqa: BLE001
-            log.exception("handler error for %s", msg_type)
-            send_error("internal_error", str(exc), req_id)
-
-    log.info("Native messaging host %s shutting down", HOST_NAME)
+            try:
+                if msg_type in ("download", "cancel", "list"):
+                    handler(message, manager)
+                else:
+                    handler(message)
+            except Exception as exc:  # noqa: BLE001
+                log.exception("handler error for %s", msg_type)
+                send_error("internal_error", str(exc), req_id)
+    finally:
+        manager.shutdown()
+        log.info("Native messaging host %s shutting down", HOST_NAME)
 
 
 if __name__ == "__main__":

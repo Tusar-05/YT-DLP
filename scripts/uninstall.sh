@@ -6,7 +6,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-HOST_NAME="com.yt-dlp-extension.host"
+HOST_NAME="com.yt_dlp_extension.host"
+OLD_HOST_NAME="com.yt-dlp-extension.host"
 
 browser_dirs=(
   "$HOME/.config/chromium"
@@ -22,10 +23,22 @@ browser_dirs=(
 
 removed=0
 for dir in "${browser_dirs[@]}"; do
-  target="$dir/NativeMessagingHosts/$HOST_NAME.json"
-  if [[ -f "$target" ]]; then
-    rm -f "$target"
-    echo "removed $target"
+  for name in "$HOST_NAME" "$OLD_HOST_NAME"; do
+    target="$dir/NativeMessagingHosts/$name.json"
+    if [[ -f "$target" ]]; then
+      rm -f "$target"
+      echo "removed $target"
+      removed=$((removed + 1))
+    fi
+  done
+done
+
+# Firefox
+for name in "$HOST_NAME" "$OLD_HOST_NAME"; do
+  firefox_target="$HOME/.mozilla/native-messaging-hosts/$name.json"
+  if [[ -f "$firefox_target" ]]; then
+    rm -f "$firefox_target"
+    echo "removed $firefox_target"
     removed=$((removed + 1))
   fi
 done

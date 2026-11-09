@@ -10,7 +10,7 @@ All downloads are processed locally on your computer with zero external cloud de
 
 - **Extension Frontend**: Manifest V3 (HTML, CSS, JavaScript).
 - **Background Worker**: `background.js` service worker manages native messaging lifecycles, progress streaming, and download history so downloads persist even when the popup is closed.
-- **Native Host**: Python 3 host (`com.yt-dlp-extension.host`) communicating via standard 4-byte framed Native Messaging JSON protocol over stdio.
+- **Native Host**: Python 3 host (`com.yt_dlp_extension.host`) communicating via standard 4-byte framed Native Messaging JSON protocol over stdio.
 - **Media Engine**: Local `yt-dlp` for format extraction/streams and `FFmpeg` for merging and audio conversion.
 
 ---
@@ -31,13 +31,23 @@ All downloads are processed locally on your computer with zero external cloud de
   - Progress and history persist across popup open/close.
 - **Playlist Support**:
   - Automatic playlist detection.
-  - Toggle to download individual video or entire playlist with clean folder naming.
-- **Download History & Dashboard**:
-  - Recent completed, failed, and cancelled downloads directly in the popup.
+  - Opt-in toggle to download individual video or entire playlist with clean folder naming.
+  - Selective playlist item range input (e.g. `1-5, 8, 10-12`) to download specific videos from long playlists.
 - **Subtitles & Thumbnails**:
   - Optional subtitle and thumbnail downloading.
+  - Subtitle language selector (`en`, `es`, `fr`, `de`, `ja`, `zh`, auto-generated, or all).
+- **Network Resilience & Speed Limits**:
+  - Automatic download continuation (`--continue`) and automatic network fragment retries (`--retries 3`, `--fragment-retries 3`).
+  - Optional speed throttling (Unlimited, 1 MB/s, 2.5 MB/s, 5 MB/s, 10 MB/s).
+- **Authentication & Age-Gated Media**:
+  - Optional browser cookie extraction (`--cookies-from-browser`) supporting Chromium, Google Chrome, Brave, Firefox, Edge, Opera, and Vivaldi for member-only and age-restricted videos.
+- **Download History & Dashboard**:
+  - Recent completed, failed, and cancelled downloads directly in the popup with deduplication.
+- **Cross-Browser Compatibility**:
+  - Manifest V3 for Chromium, Google Chrome, Brave, and Edge.
+  - Gecko Native Messaging support for Firefox (`ytdlp-extension@local`).
 - **Settings & Tool Diagnostics**:
-  - Configurable default quality, container, audio format, and download directory (`~/Videos/Downloads` by default).
+  - Configurable default quality, container, audio format, download directory (`~/Videos/Downloads` by default), speed limit, and cookies source.
   - Version checking and upgrade instructions for `yt-dlp`, `ffmpeg`, and `python`.
 
 ---
@@ -94,7 +104,7 @@ Here you can:
 
 ## Running Tests
 
-The test suite covers binary protocol framing, format normalization, progress parsing, and mock subprocess execution:
+The test suite covers binary protocol framing, format normalization, progress parsing, rate limit/cookie sanitization, cross-browser manifests, and mock subprocess execution (38 tests):
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -111,6 +121,12 @@ To remove the Native Messaging host registrations:
 ```
 
 Then remove the extension from `chrome://extensions/`.
+
+---
+
+## Architecture & Agent Handoff
+
+For detailed technical notes, architecture diagrams, protocol specs, and inter-model collaboration context, see [AGENT_COMMUNICATION.md](AGENT_COMMUNICATION.md).
 
 ---
 

@@ -12,6 +12,8 @@ import re
 import subprocess
 from typing import Any
 
+from config import load_config
+
 # Cache to avoid running `yt-dlp --dump-json` multiple times for the same URL
 _CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 
@@ -53,6 +55,13 @@ def _run_yt_dlp_json(url: str, extra_args: list[str] | None = None) -> dict[str,
         "--no-exec",
         "--no-exec-before-download",
     ]
+
+    cookies_browser = load_config().get("cookies_from_browser")
+    if cookies_browser:
+        browser_name = str(cookies_browser).strip().lower()
+        if browser_name in ("chrome", "chromium", "brave", "firefox", "edge", "opera", "vivaldi"):
+            args.extend(["--cookies-from-browser", browser_name])
+
     if extra_args:
         args.extend(extra_args)
     else:

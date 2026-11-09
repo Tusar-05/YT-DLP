@@ -7,7 +7,7 @@
  */
 
 (function () {
-  const HOST_NAME = "com.yt-dlp-extension.host";
+  const HOST_NAME = "com.yt_dlp_extension.host";
 
   // DOM references
   const els = {
@@ -41,7 +41,11 @@
     playlistRow: document.getElementById("playlistRow"),
     playlistCb: document.getElementById("playlistCb"),
     playlistLabel: document.getElementById("playlistLabel"),
+    playlistOptions: document.getElementById("playlistOptions"),
+    playlistItemsInput: document.getElementById("playlistItemsInput"),
     subtitlesCb: document.getElementById("subtitlesCb"),
+    subtitlesOptions: document.getElementById("subtitlesOptions"),
+    subtitleLangSelect: document.getElementById("subtitleLangSelect"),
     thumbnailCb: document.getElementById("thumbnailCb"),
     downloadDir: document.getElementById("downloadDir"),
     browseDirBtn: document.getElementById("browseDirBtn"),
@@ -292,6 +296,7 @@
         if (cfg.default_video_container) els.containerSelect.value = cfg.default_video_container;
         if (cfg.default_audio_format) els.audioFormatSelect.value = cfg.default_audio_format;
         if (cfg.default_audio_quality) els.audioBitrateSelect.value = String(cfg.default_audio_quality);
+        if (cfg.subtitle_langs && els.subtitleLangSelect) els.subtitleLangSelect.value = cfg.subtitle_langs;
       }
     } catch {
       // ignore
@@ -361,11 +366,14 @@
         els.playlistLabel.textContent = data.playlist_count
           ? `Download entire playlist (${data.playlist_count} videos)`
           : "Download entire playlist";
-        els.playlistCb.checked = true;
+        els.playlistCb.checked = false; // Opt-in: avoid accidental bulk downloads
       } else {
         els.playlistRow.style.display = "none";
         els.playlistCb.checked = false;
       }
+      els.playlistOptions.style.display = "none";
+      els.playlistItemsInput.value = "";
+      els.subtitlesOptions.style.display = els.subtitlesCb.checked ? "block" : "none";
 
       // Populate resolutions
       renderResolutionOptions(data.formats?.video || []);
@@ -483,6 +491,13 @@
       params.container = els.containerSelect.value;
     }
 
+    if (els.subtitlesCb.checked) {
+      params.subtitle_langs = els.subtitleLangSelect?.value || "en";
+    }
+    if (els.playlistCb.checked && els.playlistItemsInput?.value.trim()) {
+      params.playlist_items = els.playlistItemsInput.value.trim();
+    }
+
     clearStatus();
     els.downloadBtn.disabled = true;
     els.downloadBtn.textContent = "Starting…";
@@ -550,6 +565,14 @@
 
   els.downloadBtn.addEventListener("click", startDownload);
   els.cancelActiveBtn.addEventListener("click", cancelActiveDownload);
+
+  els.playlistCb.addEventListener("change", () => {
+    els.playlistOptions.style.display = els.playlistCb.checked ? "block" : "none";
+  });
+
+  els.subtitlesCb.addEventListener("change", () => {
+    els.subtitlesOptions.style.display = els.subtitlesCb.checked ? "block" : "none";
+  });
 
   els.settingsBtn.addEventListener("click", () => {
     chrome.runtime.openOptionsPage();

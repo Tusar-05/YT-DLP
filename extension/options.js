@@ -4,7 +4,7 @@
  */
 
 (function () {
-  const HOST_NAME = "com.yt-dlp-extension.host";
+  const HOST_NAME = "com.yt_dlp_extension.host";
 
   const els = {
     downloadDir: document.getElementById("downloadDir"),
@@ -13,6 +13,9 @@
     audioBitrateSelect: document.getElementById("audioBitrateSelect"),
     videoContainerSelect: document.getElementById("videoContainerSelect"),
     defaultQualitySelect: document.getElementById("defaultQualitySelect"),
+    rateLimitSelect: document.getElementById("rateLimitSelect"),
+    cookiesBrowserSelect: document.getElementById("cookiesBrowserSelect"),
+    defaultSubtitleLangSelect: document.getElementById("defaultSubtitleLangSelect"),
     checkHostBtn: document.getElementById("checkHostBtn"),
     hostStatus: document.getElementById("hostStatus"),
     saveStatus: document.getElementById("saveStatus"),
@@ -97,6 +100,9 @@
         if (d.default_audio_quality) els.audioBitrateSelect.value = String(d.default_audio_quality);
         if (d.default_video_container) els.videoContainerSelect.value = d.default_video_container;
         if (d.default_video_quality) els.defaultQualitySelect.value = d.default_video_quality;
+        if (d.rate_limit) els.rateLimitSelect.value = d.rate_limit;
+        if (d.cookies_from_browser) els.cookiesBrowserSelect.value = d.cookies_from_browser;
+        if (d.subtitle_langs) els.defaultSubtitleLangSelect.value = d.subtitle_langs;
       }
     } catch (e) {
       setStatus(els.saveStatus, "Could not load config: " + e.message, true);
@@ -132,6 +138,9 @@
       default_audio_quality: els.audioBitrateSelect.value,
       default_video_container: els.videoContainerSelect.value,
       default_video_quality: els.defaultQualitySelect.value,
+      rate_limit: els.rateLimitSelect.value,
+      cookies_from_browser: els.cookiesBrowserSelect.value,
+      subtitle_langs: els.defaultSubtitleLangSelect.value,
     };
     try {
       const res = await sendNative({ type: "config", action: "set", config: cfg });
@@ -170,7 +179,15 @@
   els.checkHostBtn.addEventListener("click", checkHost);
 
   // Auto-save on change
-  for (const el of [els.audioFormatSelect, els.audioBitrateSelect, els.videoContainerSelect, els.defaultQualitySelect]) {
+  for (const el of [
+    els.audioFormatSelect,
+    els.audioBitrateSelect,
+    els.videoContainerSelect,
+    els.defaultQualitySelect,
+    els.rateLimitSelect,
+    els.cookiesBrowserSelect,
+    els.defaultSubtitleLangSelect,
+  ]) {
     el.addEventListener("change", saveConfig);
   }
   els.downloadDir.addEventListener("blur", saveConfig);

@@ -25,6 +25,9 @@ DEFAULTS: dict[str, Any] = {
     "default_audio_quality": "192",
     "download_subtitles": False,
     "download_thumbnail": False,
+    "subtitle_langs": "en",
+    "rate_limit": "",
+    "cookies_from_browser": "",
 }
 
 
