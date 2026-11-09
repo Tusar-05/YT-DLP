@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>yt-dlp Extension</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 12c0 4.714-3.382 8.571-7.571 8.571S7 16.714 7 12 10.382 3.429 14.571 3.429 22 7.286 22 12z" />
+          <polyline points="22 12 18 12 15 9 9 9 6 12 2 12" />
+        </svg>
+        <span class="brand-text">yt-dlp Extension</span>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- URL / metadata section -->
+      <section class="card">
+        <div class="section-title">Video</div>
+        <div class="url-row">
+          <input type="url" id="urlInput" placeholder="Paste a video URL..." />
+          <button id="detectBtn" class="btn btn-outline">Use Current Tab</button>
+        </div>
+        <div class="meta" id="metaContainer" style="display:none">
+          <div class="meta-thumb">
+            <img id="thumbImg" src="" alt="Thumbnail" />
+          </div>
+          <div class="meta-info">
+            <h2 id="titleText">Loading title...</h2>
+            <div class="channel" id="channelText"></div>
+            <div class="duration" id="durationText"></div>
+            <div class="url-text" id="urlText"></div>
+          </div>
+        </div>
+        <div id="loadingSpinner" class="spinner small" style="display:none">Loading&hellip;</div>
+      </section>
+
+      <!-- Download options -->
+      <section class="card" id="optionsCard" style="display:none">
+        <div class="section-title">Download Options</div>
+
+        <div class="field-row">
+          <label class="field-label">Mode</label>
+          <div class="segmented" id="modeSeg">
+            <button type="button" class="seg active" data-mode="video">Video</button>
+            <button type="button" class="seg" data-mode="audio">Audio</button>
+          </div>
+        </div>
+
+        <div class="field-row" id="videoFields">
+          <label class="field-label">Resolution</label>
+          <select id="resolutionSelect"></select>
+        </div>
+
+        <div class="field-row" id="containerFields">
+          <label class="field-label">Container</label>
+          <select id="containerSelect">
+            <option value="mp4">MP4</option>
+            <option value="webm">WebM</option>
+          </select>
+        </div>
+
+        <div class="field-row" id="audioFields" style="display:none">
+          <label class="field-label">Format</label>
+          <select id="audioFormatSelect">
+            <option value="mp3">MP3</option>
+            <option value="m4a">M4A</option>
+            <option value="opus">OPUS</option>
+            <option value="wav">WAV</option>
+            <option value="flac">FLAC</option>
+          </select>
+          <label class="field-label" style="margin-top:8px">Bitrate (kbps)</label>
+          <select id="audioBitrateSelect">
+            <option value="64">64</option>
+            <option value="128" selected>128</option>
+            <option value="192">192</option>
+            <option value="256">256</option>
+            <option value="320">320</option>
+          </select>
+        </div>
+
+        <div class="field-row">
+          <label class="checkbox-row">
+            <input type="checkbox" id="subtitlesCb" /> <span>Download subtitles</span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" id="thumbnailCb" /> <span>Download thumbnail</span>
+          </label>
+        </div>
+
+        <div class="field-row">
+          <label class="field-label">Download to</label>
+          <div class="path-row">
+            <input type="text" id="downloadDir" readonly placeholder="Default download directory" />
+            <button id="browseDirBtn" class="btn btn-outline btn-sm">Change</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Download action + progress -->
+      <section class="card">
+        <div class="section-title">Download</div>
+        <button id="downloadBtn" class="btn btn-primary btn-lg" disabled>Download</button>
+        <div id="progressContainer" class="progress-container" style="display:none">
+          <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+          <div class="progress-text" id="progressText">0%</div>
+          <div class="progress-meta" id="progressMeta"></div>
+        </div>
+      </section>
+
+      <div id="status" class="status"></div>
+    </main>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

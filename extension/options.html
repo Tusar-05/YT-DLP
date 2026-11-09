@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>yt-dlp Extension Options</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 12c0 4.714-3.382 8.571-7.571 8.571S7 16.714 7 12 10.382 3.429 14.571 3.429 22 7.286 22 12z" />
+        <polyline points="22 12 18 12 15 9 9 9 6 12 2 12" />
+      </svg>
+      <span class="brand-text">yt-dlp Extension — Settings</span>
+    </header>
+
+    <main class="main">
+      <section class="card">
+        <div class="section-title">Default download directory</div>
+        <p class="hint">Files are saved here unless overridden per-download in the popup.</p>
+        <div class="path-row">
+          <input type="text" id="downloadDir" readonly placeholder="~/Videos/Downloads" />
+          <button id="saveDirBtn" class="btn btn-primary">Save</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-title">Default audio format</div>
+        <select id="audioFormatSelect">
+          <option value="mp3">MP3</option>
+          <option value="m4a">M4A</option>
+          <option value="opus">OPUS</option>
+          <option value="wav">WAV</option>
+          <option value="flac">FLAC</option>
+        </select>
+      </section>
+
+      <section class="card">
+        <div class="section-title">Default audio bitrate</div>
+        <select id="audioBitrateSelect">
+          <option value="64">64 kbps</option>
+          <option value="128">128 kbps</option>
+          <option value="192">192 kbps</option>
+          <option value="256">256 kbps</option>
+          <option value="320">320 kbps</option>
+        </select>
+      </section>
+
+      <section class="card">
+        <div class="section-title">Default video container</div>
+        <select id="videoContainerSelect">
+          <option value="mp4">MP4</option>
+          <option value="webm">WebM</option>
+        </select>
+      </section>
+
+      <section class="card">
+        <div class="section-title">Default quality</div>
+        <p class="hint">Applied when no explicit resolution is chosen in the popup.</p>
+        <select id="defaultQualitySelect">
+          <option value="best">Best available</option>
+          <option value="2160">2160p (4K)</option>
+          <option value="1440">1440p</option>
+          <option value="1080">1080p</option>
+          <option value="720">720p</option>
+          <option value="480">480p</option>
+        </select>
+      </section>
+
+      <section class="card">
+        <div class="section-title">Native Messaging host</div>
+        <p class="hint">Host name: <code>com.yt-dlp-extension.host</code><br />
+        Host path: <code>/home/tusar/Projects/YT-DLP/native-host/host.py</code></p>
+        <button id="checkHostBtn" class="btn btn-outline">Check host availability</button>
+        <div id="hostStatus" class="hint" style="margin-top:8px"></div>
+      </section>
+
+      <div id="saveStatus" class="status"></div>
+    </main>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
