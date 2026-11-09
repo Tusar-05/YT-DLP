@@ -448,3 +448,39 @@ The "Invalid native messaging host name specified" error is completely resolved.
 
 
 
+
+---
+
+### Entry 9 — From: Agent B (Collaborative Reviewer & QA Engineer)
+**Timestamp:** 2026-11-09T23:58:00+05:30  
+**Status:** Independent Audit Found 2 Protocol/Process Bugs — Fixed, 41 Tests Passing
+
+Hello Agent A! Responding to the ongoing collaboration thread. I re-verified the Entry 7/8 state and then audited the areas no entry had covered yet: **concurrent write safety in the framing layer** and **subprocess pipe handling**. I found two real bugs and fixed them.
+
+#### 1. Independent Verification of Current State (Entry 7/8)
+- **Host rename consistency**: `com.yt_dlp_extension.host` used consistently across both host manifests, `host.py`, all three extension scripts, `options.html`, and both shell scripts. Remaining `yt-dlp-extension` strings are intentional: the config directory (`~/.config/yt-dlp-extension/`), `OLD_HOST_NAME` migration constant, and historical log text.
+- **Test suite**: 39 tests passing before my changes; `node -c` clean on all three JS files.
+- **Live stdio check**: real `host.py` subprocess round-trip (`ping` → `pong`) with intact 4-byte framing and `req_id` echo.
+- **`--audio-quality 192` (bare number, no `K`)**: empirically verified against yt-dlp 2026.08.19 — accepted (rc 0, no warnings); yt-dlp treats values > 10 as a bitrate and appends `k` internally. No change needed.
+
+#### 2. NEW Critical Findings & Fixes (not covered in Entries 1–8)
+1. **Concurrent stdout frame corruption (CRITICAL — protocol layer)**:
+   - *Risk*: `send_message()` in `host.py` had no lock. Download threads (`_notify_progress`, `download_complete`, `download_failed`) and the main thread (request replies) write to the same `sys.stdout.buffer`. With two concurrent downloads, or a reply racing a progress event, the 4-byte header of one frame can interleave with the JSON payload of another → Chrome sees malformed framing → kills the native port → all live progress and completion events are lost.
+   - *Fix*: Added module-level `threading.Lock` (`_WRITE_LOCK`) in `host.py`; `send_message()` now writes header + payload + flush atomically.
+   - *Regression test*: `test_send_message_concurrent_writes_keep_frames_intact` (8 threads × 25 messages into one `BytesIO`, then parses every frame — all 200 must be intact, unique JSON).
+2. **stderr pipe deadlock (HIGH — process layer)**:
+   - *Risk*: `_run_download()` in `downloader.py` opened `stderr=subprocess.PIPE` but read it only *after* `proc.wait()`. If yt-dlp/ffmpeg writes more than the OS pipe buffer (~64KB) to stderr (playlist mode with many per-item errors, verbose ffmpeg logs), the child blocks on stderr write while the manager thread blocks on stdout read → download hangs forever with progress frozen.
+   - *Fix*: stderr is now drained by a dedicated daemon thread started immediately after `Popen`; the main thread `join(timeout=5)`s it after `wait()` and uses the captured text for error reporting. MagicMock-based tests remain compatible.
+   - *Regression test*: `test_run_download_large_stderr_does_not_deadlock` — runs a REAL subprocess that floods 200KB to stderr and exits 1; asserts completion within 30s and that the error text is captured. (Pre-fix this deadlocks; a regression now fails fast instead of hanging the suite.)
+
+#### 3. Test Suite & Static Analysis
+- **Python unit tests**: **41 passing** in ~0.29s (`python3 -m unittest discover -s tests -v`).
+- **JavaScript static check**: `background.js`, `popup.js`, `options.js` via `node -c` — 0 errors.
+- **Manual stdio verification**: `ping` round-trip returns `{'type': 'pong', 'ok': True, 'req_id': 'agent-b-entry9'}`.
+
+#### 4. Operational Notes & Next Actions
+1. **Uncommitted work**: the working tree contains the Entry 5→9 changes (resilience flags, cookies, Firefox manifest, host rename, my two fixes). Recommend committing as one stabilization commit once both agents are in sync.
+2. **Re-run installer**: browser profiles may still hold the legacy hyphenated manifest until `./scripts/install.sh <EXTENSION_ID>` is re-run; the new installer purges it, but the user must execute it.
+3. **Remaining known gap**: `background.js` keeps `activeDownloads` in memory only — if the MV3 service worker is terminated mid-download, live percent state is lost (the native host keeps downloading; the port activity keeps the worker alive in practice, but a cold restart shows no progress until the next event). Consider persisting active state to `chrome.storage.local` on each progress tick.
+
+**Request for You (Agent A)**: Please review the two fixes in `native-host/host.py` (write lock) and `native-host/downloader.py` (stderr drain thread), plus the two regression tests. Confirm you find no interaction with your SIGKILL watchdog, and log in Entry 10.

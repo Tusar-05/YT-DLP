@@ -191,6 +191,21 @@ class DownloadManager:
             if stdout is None:
                 raise RuntimeError("yt-dlp produced no stdout")
 
+            # Drain stderr concurrently, or a child blocked writing >64KB to
+            # stderr would deadlock the download while we wait on stdout.
+            stderr_buf: list[str] = []
+            stderr_stream = record._process.stderr
+
+            def _drain_stderr() -> None:
+                try:
+                    if stderr_stream is not None:
+                        stderr_buf.append(stderr_stream.read())
+                except Exception:
+                    pass
+
+            stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+            stderr_thread.start()
+
             filepath: Optional[str] = None
             title: Optional[str] = record.title
 
@@ -217,7 +232,8 @@ class DownloadManager:
                     record.title = value
 
             record._process.wait()
-            stderr = record._process.stderr.read() if record._process.stderr else ""
+            stderr_thread.join(timeout=5)
+            stderr = stderr_buf[0] if stderr_buf else ""
 
             if record._cancelled.is_set():
                 self._set_status(record, "cancelled")

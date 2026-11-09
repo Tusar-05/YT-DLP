@@ -1,6 +1,10 @@
 """Unit tests for host.py message routing and handler responses."""
 
+import io
+import json
+import struct
 import sys
+import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +15,7 @@ from host import (
     handle_download,
     handle_ping,
     handle_version,
+    send_message,
 )
 
 
@@ -93,6 +98,33 @@ class TestHostHandlers(unittest.TestCase):
         self.assertTrue(res["ok"])
         self.assertEqual(res["download_id"], "fake-uuid")
         self.assertEqual(res["req_id"], "can-1")
+
+
+    def test_send_message_concurrent_writes_keep_frames_intact(self):
+        buf = io.BytesIO()
+        n_threads, per_thread = 8, 25
+
+        def worker(tid):
+            for i in range(per_thread):
+                send_message({"type": "progress", "download_id": f"d{tid}", "seq": i}, stream=buf)
+
+        threads = [threading.Thread(target=worker, args=(t,)) for t in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        data = buf.getvalue()
+        pos, seen = 0, set()
+        while pos < len(data):
+            (length,) = struct.unpack("<I", data[pos:pos + 4])
+            payload = data[pos + 4:pos + 4 + length]
+            msg = json.loads(payload)
+            seen.add((msg["download_id"], msg["seq"]))
+            pos += 4 + length
+
+        total = n_threads * per_thread
+        self.assertEqual(len(seen), total)
 
 
 if __name__ == "__main__":

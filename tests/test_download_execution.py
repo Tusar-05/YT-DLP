@@ -161,6 +161,29 @@ class TestDownloadExecution(unittest.TestCase):
         self.assertIn((9876, signal.SIGTERM), killed_signals)
         self.assertIn((9876, signal.SIGKILL), killed_signals)
 
+    def test_run_download_large_stderr_does_not_deadlock(self):
+        import sys as _sys
+        manager = DownloadManager(send_message=lambda m: None)
+        record = DownloadRecord("dl-stderr-1", "https://example.com/test", {})
+
+        flood_stderr = [
+            _sys.executable, "-c",
+            "import sys; sys.stderr.write('E' * 200000); sys.exit(1)",
+        ]
+
+        worker = threading.Thread(
+            target=manager._run_download,
+            args=(record, "video", "/tmp", {}),
+            daemon=True,
+        )
+        with patch.object(DownloadManager, "_build_args", return_value=flood_stderr):
+            worker.start()
+            worker.join(timeout=30)
+
+        self.assertFalse(worker.is_alive(), "download deadlocked on a full stderr pipe")
+        self.assertEqual(record.status, "failed")
+        self.assertIn("E", record.error or "")
+
 
 if __name__ == "__main__":
     unittest.main()

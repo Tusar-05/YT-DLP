@@ -66,13 +66,19 @@ def read_message(stream=None) -> dict[str, Any] | None:
         return None
 
 
+# A lock is required: download threads and the main thread share stdout, and
+# interleaved header/payload writes would corrupt the 4-byte framing protocol.
+_WRITE_LOCK = threading.Lock()
+
+
 def send_message(message: dict[str, Any], stream=None) -> None:
-    """Send one framed JSON message to stream (default stdout.buffer)."""
+    """Send one framed JSON message to stream (default stdout.buffer). Thread-safe."""
     s = stream or sys.stdout.buffer
     payload = json.dumps(message).encode("utf-8")
-    s.write(struct.pack("<I", len(payload)))
-    s.write(payload)
-    s.flush()
+    with _WRITE_LOCK:
+        s.write(struct.pack("<I", len(payload)))
+        s.write(payload)
+        s.flush()
 
 
 def send_reply(orig_msg: dict[str, Any], payload: dict[str, Any]) -> None:
