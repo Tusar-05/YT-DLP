@@ -19,6 +19,12 @@
     activeProgressText: document.getElementById("activeProgressText"),
     activeProgressMeta: document.getElementById("activeProgressMeta"),
 
+    hostSetupCard: document.getElementById("hostSetupCard"),
+    setupCmdInput: document.getElementById("setupCmdInput"),
+    copySetupCmdBtn: document.getElementById("copySetupCmdBtn"),
+    retryHostBtn: document.getElementById("retryHostBtn"),
+    openOptionsFromPromptBtn: document.getElementById("openOptionsFromPromptBtn"),
+
     urlInput: document.getElementById("urlInput"),
     detectBtn: document.getElementById("detectBtn"),
     loadingSpinner: document.getElementById("loadingSpinner"),
@@ -210,6 +216,21 @@
     els.status.className = "status";
   }
 
+  function showHostSetupHelp(errMsg) {
+    if (els.hostSetupCard) {
+      els.hostSetupCard.style.display = "block";
+      const cmd = chrome.runtime?.id ? `./setup.sh ${chrome.runtime.id}` : "./setup.sh";
+      els.setupCmdInput.value = cmd;
+    }
+    setStatus("Native host not connected: " + errMsg, true);
+  }
+
+  function hideHostSetupHelp() {
+    if (els.hostSetupCard) {
+      els.hostSetupCard.style.display = "none";
+    }
+  }
+
   function fmtDuration(seconds) {
     if (!seconds && seconds !== 0) return "";
     const h = Math.floor(seconds / 3600);
@@ -384,10 +405,18 @@
 
       els.optionsCard.style.display = "block";
       els.downloadBtn.disabled = false;
+      hideHostSetupHelp();
     } catch (err) {
       const msg = err.message || "Unknown error";
-      if (msg.includes("Specified native messaging host not found") || msg.includes("Access to the specified native messaging host is forbidden")) {
-        setStatus("Host registration error: Please run ./scripts/install.sh <EXTENSION_ID>", true);
+      if (
+        msg.includes("Specified native messaging host not found") ||
+        msg.includes("Access to the specified native messaging host is forbidden") ||
+        msg.includes("Native host disconnected") ||
+        msg.includes("Invalid native messaging host name") ||
+        msg.includes("Host disconnected") ||
+        msg.includes("Could not establish connection")
+      ) {
+        showHostSetupHelp(msg);
       } else {
         setStatus("Failed to load info: " + msg, true);
       }
@@ -592,6 +621,40 @@
     els.downloadDir.focus();
     els.downloadDir.select();
   });
+
+  if (els.copySetupCmdBtn) {
+    els.copySetupCmdBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(els.setupCmdInput.value);
+        const prev = els.copySetupCmdBtn.textContent;
+        els.copySetupCmdBtn.textContent = "Copied!";
+        setTimeout(() => { els.copySetupCmdBtn.textContent = prev; }, 2000);
+      } catch {
+        els.setupCmdInput.select();
+      }
+    });
+  }
+
+  if (els.retryHostBtn) {
+    els.retryHostBtn.addEventListener("click", () => {
+      hideHostSetupHelp();
+      clearStatus();
+      directPort = null;
+      loadDefaultConfig();
+      const url = els.urlInput.value.trim() || currentUrl;
+      if (url) {
+        loadMediaInfo(url);
+      } else {
+        detectCurrentTab();
+      }
+    });
+  }
+
+  if (els.openOptionsFromPromptBtn) {
+    els.openOptionsFromPromptBtn.addEventListener("click", () => {
+      chrome.runtime.openOptionsPage();
+    });
+  }
 
   // ------------------------------------------------------------------ //
   // Initialization

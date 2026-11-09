@@ -125,6 +125,20 @@
         <div class="info-table">
           <div class="info-row"><span class="info-label">Host Name:</span> <code>com.yt_dlp_extension.host</code></div>
           <div class="info-row"><span class="info-label">Host Path:</span> <code id="hostPath">detecting…</code></div>
+          <div class="info-row">
+            <span class="info-label">Extension ID:</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <code id="extIdVal" style="font-size:11px;">detecting…</code>
+              <button id="copyExtIdBtn" class="btn btn-outline btn-xs" type="button" title="Copy Extension ID">Copy</button>
+            </div>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Setup Script:</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <code id="setupCmdVal" style="font-size:11px;">./setup.sh</code>
+              <button id="copySetupCmdBtn" class="btn btn-outline btn-xs" type="button" title="Copy Setup Command">Copy</button>
+            </div>
+          </div>
           <div class="info-row"><span class="info-label">yt-dlp:</span> <span id="ytdlpVersion" class="badge">checking…</span></div>
           <div class="info-row"><span class="info-label">FFmpeg:</span> <span id="ffmpegVersion" class="badge">checking…</span></div>
           <div class="info-row"><span class="info-label">Python:</span> <span id="pythonVersion" class="badge">checking…</span></div>
@@ -133,6 +147,18 @@
         <div style="margin-top:12px; display:flex; gap:10px; align-items:center;">
           <button id="checkHostBtn" class="btn btn-outline">Check Host Connection</button>
           <span id="hostStatus" class="hint" style="margin:0"></span>
+        </div>
+
+        <!-- Setup instructions box shown on connection error -->
+        <div id="setupHelpBox" class="update-box" style="margin-top:12px; display:none; border-color:var(--accent);">
+          <div style="font-weight:600; margin-bottom:4px; color:var(--accent);">Host Not Connected:</div>
+          <p style="font-size:12px; margin:0 0 8px 0; color:var(--text-muted);">
+            Open a terminal in the project repository and run:
+          </p>
+          <code id="quickSetupRunCmd">./setup.sh</code>
+          <p style="font-size:11px; margin:8px 0 0 0; color:var(--text-muted);">
+            This automatically registers the native messaging manifest and checks dependencies.
+          </p>
         </div>
 
         <div id="updateInfo" class="update-box" style="margin-top:12px; display:none">

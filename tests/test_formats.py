@@ -22,6 +22,10 @@ class TestFormats(unittest.TestCase):
         self.assertFalse(is_video_url("file:///etc/passwd"))
         self.assertFalse(is_video_url("javascript:alert(1)"))
         self.assertFalse(is_video_url(""))
+        self.assertFalse(is_video_url("https://example.com\nmalicious"))
+        self.assertFalse(is_video_url("https://example.com\rmalicious"))
+        self.assertFalse(is_video_url("https://example.com\0malicious"))
+        self.assertFalse(is_video_url(12345))  # type: ignore
 
     def test_codec_normalization(self):
         self.assertEqual(normalize_codec_name("avc1.640028"), "H.264")

@@ -1,0 +1,24 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.zip
+
+# Session / Agent / IDE artifacts
+.omo/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test / Coverage artifacts
+.coverage
+htmlcov/
+.pytest_cache/

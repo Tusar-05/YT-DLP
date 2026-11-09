@@ -184,6 +184,35 @@ class TestDownloadExecution(unittest.TestCase):
         self.assertEqual(record.status, "failed")
         self.assertIn("E", record.error or "")
 
+    def test_early_cancellation_before_process_spawn(self):
+        messages = []
+        manager = DownloadManager(send_message=messages.append)
+        record = DownloadRecord("dl-early-cancel", "https://example.com/test", {})
+        record._cancelled.set()
+
+        with patch("subprocess.Popen") as mock_popen:
+            manager._run_download(record, "video", "/tmp", {})
+            mock_popen.assert_not_called()
+
+        self.assertEqual(record.status, "cancelled")
+        fail_msg = next(m for m in messages if m["type"] == "download_failed")
+        self.assertEqual(fail_msg["status"], "cancelled")
+
+    def test_start_download_rejects_malformed_urls(self):
+        manager = DownloadManager(send_message=lambda m: None)
+        invalid_urls = [
+            "https://example.com\nmalicious",
+            "https://example.com\rmalicious",
+            "https://example.com\0malicious",
+            "ftp://example.com/file.mp4",
+            "file:///etc/passwd",
+            "",
+            12345,
+        ]
+        for url in invalid_urls:
+            with self.assertRaises(ValueError):
+                manager.start_download({"url": url})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,6 +23,8 @@ def is_video_url(url: str) -> bool:
     if not isinstance(url, str):
         return False
     url_trimmed = url.strip()
+    if any(c in url_trimmed for c in ("\r", "\n", "\0")):
+        return False
     return url_trimmed.startswith("http://") or url_trimmed.startswith("https://")
 
 

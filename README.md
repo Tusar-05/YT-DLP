@@ -52,59 +52,82 @@ All downloads are processed locally on your computer with zero external cloud de
 
 ---
 
-## Installation (Arch / Omarchy Linux)
+## Quick Start & Setup (60 Seconds)
 
-### 1. Run the installer
+### Step 1: Run the Setup Wizard
 
-```bash
-cd /path/to/YT-DLP
-./scripts/install.sh
-```
-
-The script verifies system dependencies (`python3`, `yt-dlp`, `ffmpeg`), makes `host.py` executable, creates `~/Videos/Downloads`, and prepares the Native Messaging host manifest.
-
-### 2. Load the Extension in Chromium / Chrome / Brave
-
-1. Open your browser and navigate to `chrome://extensions/` (or `brave://extensions/`).
-2. Toggle **Developer mode** on (top-right).
-3. Click **Load unpacked** and select the `extension/` folder inside this repository.
-4. Copy the generated **Extension ID** (e.g. `lmnpgndmioblkjcihjjfejdbgihjghmg`).
-
-### 3. Lock the Host to your Extension ID
-
-Re-run the installer with your Extension ID:
+From the project root:
 
 ```bash
-./scripts/install.sh <EXTENSION_ID>
+./setup.sh
 ```
 
-This registers the host manifest with the allowed origin `chrome-extension://<EXTENSION_ID>/` in your browser profile (`~/.config/chromium/NativeMessagingHosts/` etc.).
+The setup wizard automatically:
+1. Verifies and installs system dependencies (`python3`, `yt-dlp`, `ffmpeg` via `pacman`).
+2. Calculates the deterministic extension ID for your local repository folder.
+3. Registers the Native Messaging host (`com.yt_dlp_extension.host`) across all installed browsers (Chromium, Chrome, Brave, Edge, Firefox).
+4. Runs a live stdio protocol self-test to verify connectivity.
+
+---
+
+### Step 2: Load the Extension in Your Browser
+
+#### Chromium, Google Chrome, Brave, or Microsoft Edge:
+1. Navigate to `chrome://extensions/` (or `brave://extensions/`).
+2. Enable **Developer mode** (toggle in the top-right corner).
+3. Click **Load unpacked**.
+4. Select the `extension/` directory inside this repository.
+
+#### Mozilla Firefox:
+1. Navigate to `about:debugging#/runtime/this-firefox`.
+2. Click **Load Temporary Add-on…**.
+3. Select `extension/manifest.json`.
+
+**That's it!** The extension is immediately connected to your local `yt-dlp` backend.
+
+---
+
+### Diagnostics & Management
+
+- **Run environment health check anytime**:
+  ```bash
+  ./setup.sh --doctor
+  ```
+- **Package distributable extension zip**:
+  ```bash
+  ./scripts/package.sh
+  ```
+- **Uninstall native messaging hosts**:
+  ```bash
+  ./setup.sh --uninstall
+  ```
 
 ---
 
 ## Usage
 
-1. Open any supported video or media webpage (e.g. YouTube, Vimeo, etc.).
-2. Click the **yt-dlp Extension** icon in your toolbar.
-3. The extension detects the current tab URL and loads video metadata and available formats.
+1. Open any supported video or media webpage (e.g. YouTube, Vimeo, Twitch, etc.).
+2. Click the **yt-dlp Downloader** icon in your browser toolbar.
+3. The extension detects the current tab URL and instantly loads video metadata and available formats.
 4. Choose your mode (**Video** or **Audio Only**), resolution, codec, container/format, and click **Download**.
-5. Real-time speed and progress will be shown in the popup and persist in the background.
+5. Real-time speed and progress will be shown in the popup and persist in the background even if the popup is closed.
 
 ---
 
-## Settings
+## Settings & Diagnostics
 
 Click the settings gear icon in the popup header or right-click the extension icon and select **Options**.
 Here you can:
-- Change the default download directory.
-- Set default container and audio bitrates.
+- Change the default download directory (defaults to `~/Videos/Downloads`).
+- Configure speed limits / download throttling (e.g. 5 MB/s, 10 MB/s, or unlimited).
+- Configure browser cookies extraction (`chromium`, `firefox`, `brave`, `chrome`) for member-only and age-gated videos.
 - Check backend connectivity and verify installed versions of `yt-dlp` and `FFmpeg`.
 
 ---
 
 ## Running Tests
 
-The test suite covers binary protocol framing, format normalization, progress parsing, rate limit/cookie sanitization, cross-browser manifests, and mock subprocess execution (38 tests):
+The test suite covers binary protocol framing, format normalization, progress parsing, rate limit/cookie sanitization, cross-browser manifests, setup automation, and mock subprocess execution (44 tests):
 
 ```bash
 python3 -m unittest discover -s tests -v

@@ -20,6 +20,12 @@
     hostStatus: document.getElementById("hostStatus"),
     saveStatus: document.getElementById("saveStatus"),
     hostPath: document.getElementById("hostPath"),
+    extIdVal: document.getElementById("extIdVal"),
+    copyExtIdBtn: document.getElementById("copyExtIdBtn"),
+    setupCmdVal: document.getElementById("setupCmdVal"),
+    copySetupCmdBtn: document.getElementById("copySetupCmdBtn"),
+    setupHelpBox: document.getElementById("setupHelpBox"),
+    quickSetupRunCmd: document.getElementById("quickSetupRunCmd"),
     ytdlpVersion: document.getElementById("ytdlpVersion"),
     ffmpegVersion: document.getElementById("ffmpegVersion"),
     pythonVersion: document.getElementById("pythonVersion"),
@@ -166,12 +172,15 @@
       const res = await sendNative({ type: "ping" });
       if (res && res.ok) {
         setStatus(els.hostStatus, "Host connected successfully.", false);
+        if (els.setupHelpBox) els.setupHelpBox.style.display = "none";
         loadVersionInfo();
       } else {
         setStatus(els.hostStatus, "Host error: " + (res?.error || "unknown"), true);
+        if (els.setupHelpBox) els.setupHelpBox.style.display = "block";
       }
     } catch (e) {
       setStatus(els.hostStatus, "Host unreachable: " + e.message, true);
+      if (els.setupHelpBox) els.setupHelpBox.style.display = "block";
     }
   }
 
@@ -191,6 +200,41 @@
     el.addEventListener("change", saveConfig);
   }
   els.downloadDir.addEventListener("blur", saveConfig);
+
+  // Initialize runtime extension ID and setup commands
+  if (els.extIdVal && chrome.runtime?.id) {
+    els.extIdVal.textContent = chrome.runtime.id;
+    els.setupCmdVal.textContent = `./setup.sh ${chrome.runtime.id}`;
+    if (els.quickSetupRunCmd) {
+      els.quickSetupRunCmd.textContent = `./setup.sh ${chrome.runtime.id}`;
+    }
+  }
+
+  if (els.copyExtIdBtn) {
+    els.copyExtIdBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(chrome.runtime.id || "");
+        const prev = els.copyExtIdBtn.textContent;
+        els.copyExtIdBtn.textContent = "Copied!";
+        setTimeout(() => { els.copyExtIdBtn.textContent = prev; }, 2000);
+      } catch {
+        // ignore
+      }
+    });
+  }
+
+  if (els.copySetupCmdBtn) {
+    els.copySetupCmdBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(els.setupCmdVal.textContent || "./setup.sh");
+        const prev = els.copySetupCmdBtn.textContent;
+        els.copySetupCmdBtn.textContent = "Copied!";
+        setTimeout(() => { els.copySetupCmdBtn.textContent = prev; }, 2000);
+      } catch {
+        // ignore
+      }
+    });
+  }
 
   loadConfig();
   loadVersionInfo();

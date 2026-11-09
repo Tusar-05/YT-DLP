@@ -15,10 +15,17 @@ const pendingRequests = new Map(); // req_id -> { resolve, reject, timer }
 const activeDownloads = new Map(); // download_id -> DownloadRecord
 let downloadHistory = []; // list of completed/failed records
 
-// Load saved history on startup
-chrome.storage.local.get(["downloadHistory"], (res) => {
+// Load saved history and active downloads on startup
+chrome.storage.local.get(["downloadHistory", "activeDownloads"], (res) => {
   if (Array.isArray(res.downloadHistory)) {
     downloadHistory = res.downloadHistory.slice(0, 50);
+  }
+  if (Array.isArray(res.activeDownloads)) {
+    for (const item of res.activeDownloads) {
+      if (item && item.download_id && item.status !== "completed" && item.status !== "failed" && item.status !== "cancelled") {
+        activeDownloads.set(item.download_id, item);
+      }
+    }
   }
 });
 
@@ -26,10 +33,42 @@ function saveHistory() {
   chrome.storage.local.set({ downloadHistory: downloadHistory.slice(0, 50) });
 }
 
+let saveActiveTimeout = null;
+
+function saveActiveDownloads() {
+  clearTimeout(saveActiveTimeout);
+  saveActiveTimeout = null;
+  chrome.storage.local.set({ activeDownloads: Array.from(activeDownloads.values()) });
+}
+
+function debouncedSaveActiveDownloads() {
+  if (saveActiveTimeout) return;
+  saveActiveTimeout = setTimeout(() => {
+    saveActiveTimeout = null;
+    chrome.storage.local.set({ activeDownloads: Array.from(activeDownloads.values()) });
+  }, 1000);
+}
+
 function addHistoryRecord(record) {
   if (!record || !record.download_id) return;
   downloadHistory = [record, ...downloadHistory.filter((h) => h.download_id !== record.download_id)].slice(0, 50);
   saveHistory();
+}
+
+function showNotification(title, message, isError = false) {
+  if (chrome.notifications && typeof chrome.notifications.create === "function") {
+    try {
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: "icons/icon-128.png",
+        title: title,
+        message: message,
+        priority: isError ? 2 : 1,
+      });
+    } catch {
+      // ignore
+    }
+  }
 }
 
 function getNativePort() {
@@ -114,6 +153,7 @@ function onNativeMessage(msg) {
         item.speed_str = msg.speed_str || "";
         item.eta_str = msg.eta_str || "";
         item.status = "running";
+        debouncedSaveActiveDownloads();
       }
       broadcastToExtension({ type: "download_progress", ...msg });
       break;
@@ -129,12 +169,19 @@ function onNativeMessage(msg) {
       record.completedAt = Date.now();
 
       activeDownloads.delete(id);
+      saveActiveDownloads();
       addHistoryRecord(record);
 
       // Show indicator on extension badge
       chrome.action.setBadgeText({ text: "✓" });
       chrome.action.setBadgeBackgroundColor({ color: "#4ade80" });
       setTimeout(() => chrome.action.setBadgeText({ text: "" }), 6000);
+
+      // Show native desktop notification
+      showNotification(
+        "Download Complete",
+        record.title ? `${record.title} has finished downloading.` : "Download completed successfully."
+      );
 
       broadcastToExtension({ type: "download_completed", record });
       break;
@@ -148,6 +195,7 @@ function onNativeMessage(msg) {
       record.failedAt = Date.now();
 
       activeDownloads.delete(id);
+      saveActiveDownloads();
 
       // If already recorded (e.g. from cancelDownload), update existing record rather than duplicate
       const existing = downloadHistory.find((h) => h.download_id === id);
@@ -162,6 +210,12 @@ function onNativeMessage(msg) {
         chrome.action.setBadgeText({ text: "!" });
         chrome.action.setBadgeBackgroundColor({ color: "#cf6679" });
         setTimeout(() => chrome.action.setBadgeText({ text: "" }), 6000);
+
+        showNotification(
+          "Download Failed",
+          record.error || "The download could not be completed.",
+          true
+        );
       }
 
       broadcastToExtension({ type: "download_failed", record });
@@ -210,6 +264,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             status: "starting",
             startedAt: Date.now(),
           });
+          saveActiveDownloads();
         }
         sendResponse({ ok: true, download_id: id, data: res });
       })
@@ -225,6 +280,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const rec = activeDownloads.get(id);
           rec.status = "cancelled";
           activeDownloads.delete(id);
+          saveActiveDownloads();
           addHistoryRecord(rec);
         }
         sendResponse({ ok: true, data: res });

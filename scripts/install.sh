@@ -77,7 +77,7 @@ browser_configs=(
 
 # --- build the host manifest -----------------------------------------------
 
-# If no extension ID provided as argument, check if an existing manifest already has an ID
+# If no extension ID provided as argument, check existing manifest or auto-compute from path
 if [[ -z "$EXTENSION_ID" ]]; then
   for m in "$HOME/.config/chromium/NativeMessagingHosts/$HOST_NAME.json" "$HOME/.config/chromium/NativeMessagingHosts/$OLD_HOST_NAME.json"; do
     if [[ -f "$m" ]]; then
@@ -89,6 +89,15 @@ if [[ -z "$EXTENSION_ID" ]]; then
       fi
     fi
   done
+fi
+
+if [[ -z "$EXTENSION_ID" ]]; then
+  ext_dir="$REPO_ROOT/extension"
+  computed_id="$(python3 -c "import hashlib, os, sys; p = os.path.abspath(sys.argv[1]); h = hashlib.sha256(p.encode('utf-8')).digest()[:16]; print(''.join(chr(ord('a') + (b >> 4)) + chr(ord('a') + (b & 0x0f)) for b in h))" "$ext_dir" 2>/dev/null || true)"
+  if [[ -n "$computed_id" ]]; then
+    EXTENSION_ID="$computed_id"
+    echo "   auto-computed extension ID from repository path: $EXTENSION_ID"
+  fi
 fi
 
 if [[ -n "$EXTENSION_ID" ]]; then

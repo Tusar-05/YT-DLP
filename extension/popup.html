@@ -39,6 +39,25 @@
         </div>
       </section>
 
+      <!-- Host Setup Assistant (shown only when native host is unreachable) -->
+      <section class="card" id="hostSetupCard" style="display:none; border-color:var(--accent); background: linear-gradient(180deg, #252030 0%, #1c1c22 100%);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <div class="section-title" style="color:var(--accent); margin:0;">Native Host Setup Required</div>
+          <span class="badge" style="background:rgba(187,134,252,0.2); color:var(--accent); font-size:10px;">One-time setup</span>
+        </div>
+        <p style="margin:0 0 8px 0; font-size:12px; color:var(--text-muted); line-height:1.4;">
+          The local Python native host is not yet connected to your browser. Run this command in your terminal:
+        </p>
+        <div style="display:flex; gap:6px; margin-bottom:8px;">
+          <input type="text" id="setupCmdInput" readonly value="./setup.sh" style="font-family:monospace; font-size:11px; padding:6px 8px; flex:1;" />
+          <button id="copySetupCmdBtn" class="btn btn-primary btn-sm" type="button">Copy</button>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <button id="retryHostBtn" class="btn btn-outline btn-xs" type="button">Retry Connection</button>
+          <button id="openOptionsFromPromptBtn" class="btn-link" style="font-size:11px;" type="button">Settings & Diagnostics</button>
+        </div>
+      </section>
+
       <!-- URL / metadata section -->
       <section class="card">
         <div class="section-title">Video Source</div>

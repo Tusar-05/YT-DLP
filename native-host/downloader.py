@@ -86,7 +86,11 @@ class DownloadManager:
     def start_download(self, params: dict[str, Any]) -> str:
         """Validate params, spawn a yt-dlp download thread, return download_id."""
         url = params.get("url", "")
-        if not isinstance(url, str) or not (url.startswith("http://") or url.startswith("https://")):
+        if (
+            not isinstance(url, str)
+            or not (url.startswith("http://") or url.startswith("https://"))
+            or any(c in url for c in ("\r", "\n", "\0"))
+        ):
             raise ValueError("Invalid or missing URL")
 
         download_id = str(uuid.uuid4())
@@ -175,6 +179,16 @@ class DownloadManager:
         try:
             self._set_status(record, "running")
 
+            if record._cancelled.is_set():
+                self._set_status(record, "cancelled")
+                self._send({
+                    "type": "download_failed",
+                    "download_id": record.download_id,
+                    "error": "cancelled",
+                    "status": "cancelled",
+                })
+                return
+
             args = self._build_args(record, mode, download_dir, params)
 
             # Start process in a new process group so child processes (like ffmpeg) can be killed
@@ -186,6 +200,25 @@ class DownloadManager:
                 bufsize=1,
                 start_new_session=True,
             )
+
+            def _kill_proc_group(sig: int = signal.SIGTERM) -> None:
+                if record._process is None:
+                    return
+                try:
+                    pid = getattr(record._process, "pid", None)
+                    if isinstance(pid, int):
+                        pgid = os.getpgid(pid)
+                        os.killpg(pgid, sig)
+                    else:
+                        record._process.terminate()
+                except (ProcessLookupError, OSError, AttributeError):
+                    try:
+                        record._process.terminate()
+                    except Exception:
+                        pass
+
+            if record._cancelled.is_set():
+                _kill_proc_group(signal.SIGTERM)
 
             stdout = record._process.stdout
             if stdout is None:
@@ -202,6 +235,12 @@ class DownloadManager:
                         stderr_buf.append(stderr_stream.read())
                 except Exception:
                     pass
+                finally:
+                    if stderr_stream is not None:
+                        try:
+                            stderr_stream.close()
+                        except Exception:
+                            pass
 
             stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
             stderr_thread.start()
@@ -211,6 +250,7 @@ class DownloadManager:
 
             for line in stdout:
                 if record._cancelled.is_set():
+                    _kill_proc_group(signal.SIGTERM)
                     break
                 line = line.rstrip("\n")
                 if not line:
@@ -231,7 +271,18 @@ class DownloadManager:
                     title = value
                     record.title = value
 
-            record._process.wait()
+            if record._cancelled.is_set():
+                _kill_proc_group(signal.SIGTERM)
+                try:
+                    record._process.wait(timeout=1.0)
+                except Exception:
+                    _kill_proc_group(signal.SIGKILL)
+                    try:
+                        record._process.wait(timeout=1.0)
+                    except Exception:
+                        pass
+            else:
+                record._process.wait()
             stderr_thread.join(timeout=5)
             stderr = stderr_buf[0] if stderr_buf else ""
 
@@ -274,6 +325,17 @@ class DownloadManager:
                 "status": "failed",
             })
         finally:
+            if record._process is not None:
+                if record._process.stdout:
+                    try:
+                        record._process.stdout.close()
+                    except Exception:
+                        pass
+                if record._process.stderr:
+                    try:
+                        record._process.stderr.close()
+                    except Exception:
+                        pass
             record._process = None
 
     def _build_args(
