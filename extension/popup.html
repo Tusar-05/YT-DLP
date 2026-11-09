@@ -14,106 +14,164 @@
           <path d="M22 12c0 4.714-3.382 8.571-7.571 8.571S7 16.714 7 12 10.382 3.429 14.571 3.429 22 7.286 22 12z" />
           <polyline points="22 12 18 12 15 9 9 9 6 12 2 12" />
         </svg>
-        <span class="brand-text">yt-dlp Extension</span>
+        <span class="brand-text">yt-dlp Downloader</span>
       </div>
+      <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
     </header>
 
     <main class="main">
+      <!-- Active Download in Progress Banner (if any) -->
+      <section class="card progress-card" id="activeDownloadCard" style="display:none">
+        <div class="active-header">
+          <div class="section-title">Downloading Now</div>
+          <button id="cancelActiveBtn" class="btn btn-danger btn-xs">Cancel</button>
+        </div>
+        <div id="activeTitle" class="active-title">Media title...</div>
+        <div class="progress-bar"><div id="activeProgressFill" class="progress-fill"></div></div>
+        <div class="progress-row">
+          <span id="activeProgressText" class="progress-pct">0%</span>
+          <span id="activeProgressMeta" class="progress-meta"></span>
+        </div>
+      </section>
+
       <!-- URL / metadata section -->
       <section class="card">
-        <div class="section-title">Video</div>
+        <div class="section-title">Video Source</div>
         <div class="url-row">
-          <input type="url" id="urlInput" placeholder="Paste a video URL..." />
-          <button id="detectBtn" class="btn btn-outline">Use Current Tab</button>
+          <input type="url" id="urlInput" placeholder="Paste a video or playlist URL..." />
+          <button id="detectBtn" class="btn btn-outline btn-sm">Use Tab</button>
         </div>
+
+        <div id="loadingSpinner" class="spinner-row" style="display:none">
+          <div class="spinner"></div>
+          <span>Retrieving metadata & formats…</span>
+        </div>
+
         <div class="meta" id="metaContainer" style="display:none">
           <div class="meta-thumb">
             <img id="thumbImg" src="" alt="Thumbnail" />
           </div>
           <div class="meta-info">
-            <h2 id="titleText">Loading title...</h2>
+            <h2 id="titleText">Video title</h2>
             <div class="channel" id="channelText"></div>
             <div class="duration" id="durationText"></div>
             <div class="url-text" id="urlText"></div>
           </div>
         </div>
-        <div id="loadingSpinner" class="spinner small" style="display:none">Loading&hellip;</div>
       </section>
 
       <!-- Download options -->
       <section class="card" id="optionsCard" style="display:none">
-        <div class="section-title">Download Options</div>
+        <div class="section-title">Format & Quality</div>
 
         <div class="field-row">
           <label class="field-label">Mode</label>
           <div class="segmented" id="modeSeg">
             <button type="button" class="seg active" data-mode="video">Video</button>
-            <button type="button" class="seg" data-mode="audio">Audio</button>
+            <button type="button" class="seg" data-mode="audio">Audio Only</button>
           </div>
         </div>
 
-        <div class="field-row" id="videoFields">
-          <label class="field-label">Resolution</label>
-          <select id="resolutionSelect"></select>
+        <!-- Video fields -->
+        <div id="videoFields">
+          <div class="field-grid">
+            <div class="field-col">
+              <label class="field-label">Resolution</label>
+              <select id="resolutionSelect">
+                <option value="best">Best available</option>
+              </select>
+            </div>
+            <div class="field-col">
+              <label class="field-label">Codec</label>
+              <select id="codecSelect">
+                <option value="">Auto (Best)</option>
+                <option value="H.264">H.264 (Compatible)</option>
+                <option value="VP9">VP9 (High Quality)</option>
+                <option value="AV1">AV1 (Next-Gen)</option>
+                <option value="H.265/HEVC">H.265 / HEVC</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-row" style="margin-top:10px">
+            <label class="field-label">Container</label>
+            <select id="containerSelect">
+              <option value="mp4">MP4 (Recommended)</option>
+              <option value="webm">WebM</option>
+            </select>
+          </div>
         </div>
 
-        <div class="field-row" id="containerFields">
-          <label class="field-label">Container</label>
-          <select id="containerSelect">
-            <option value="mp4">MP4</option>
-            <option value="webm">WebM</option>
-          </select>
+        <!-- Audio fields -->
+        <div id="audioFields" style="display:none">
+          <div class="field-grid">
+            <div class="field-col">
+              <label class="field-label">Audio Format</label>
+              <select id="audioFormatSelect">
+                <option value="mp3">MP3</option>
+                <option value="m4a">M4A (AAC)</option>
+                <option value="opus">OPUS</option>
+                <option value="wav">WAV (Lossless)</option>
+                <option value="flac">FLAC (Lossless)</option>
+              </select>
+            </div>
+            <div class="field-col">
+              <label class="field-label">Target Bitrate</label>
+              <select id="audioBitrateSelect">
+                <option value="320">320 kbps</option>
+                <option value="256">256 kbps</option>
+                <option value="192" selected>192 kbps</option>
+                <option value="128">128 kbps</option>
+                <option value="64">64 kbps</option>
+              </select>
+            </div>
+          </div>
         </div>
 
-        <div class="field-row" id="audioFields" style="display:none">
-          <label class="field-label">Format</label>
-          <select id="audioFormatSelect">
-            <option value="mp3">MP3</option>
-            <option value="m4a">M4A</option>
-            <option value="opus">OPUS</option>
-            <option value="wav">WAV</option>
-            <option value="flac">FLAC</option>
-          </select>
-          <label class="field-label" style="margin-top:8px">Bitrate (kbps)</label>
-          <select id="audioBitrateSelect">
-            <option value="64">64</option>
-            <option value="128" selected>128</option>
-            <option value="192">192</option>
-            <option value="256">256</option>
-            <option value="320">320</option>
-          </select>
-        </div>
-
-        <div class="field-row">
-          <label class="checkbox-row">
-            <input type="checkbox" id="subtitlesCb" /> <span>Download subtitles</span>
+        <div class="field-row" style="margin-top:10px">
+          <label class="checkbox-row" id="playlistRow" style="display:none">
+            <input type="checkbox" id="playlistCb" /> <span id="playlistLabel">Download entire playlist</span>
           </label>
           <label class="checkbox-row">
-            <input type="checkbox" id="thumbnailCb" /> <span>Download thumbnail</span>
+            <input type="checkbox" id="subtitlesCb" /> <span>Subtitles</span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" id="thumbnailCb" /> <span>Thumbnail</span>
           </label>
         </div>
 
-        <div class="field-row">
-          <label class="field-label">Download to</label>
+        <div class="field-row" style="margin-top:10px">
+          <label class="field-label">Save Location</label>
           <div class="path-row">
-            <input type="text" id="downloadDir" readonly placeholder="Default download directory" />
-            <button id="browseDirBtn" class="btn btn-outline btn-sm">Change</button>
+            <input type="text" id="downloadDir" placeholder="~/Videos/Downloads" />
+            <button id="browseDirBtn" class="btn btn-outline btn-sm" type="button">Default</button>
           </div>
         </div>
+
+        <!-- Download action inside options card -->
+        <button id="downloadBtn" class="btn btn-primary btn-lg" style="margin-top:14px" disabled>
+          Download
+        </button>
       </section>
 
-      <!-- Download action + progress -->
-      <section class="card">
-        <div class="section-title">Download</div>
-        <button id="downloadBtn" class="btn btn-primary btn-lg" disabled>Download</button>
-        <div id="progressContainer" class="progress-container" style="display:none">
-          <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
-          <div class="progress-text" id="progressText">0%</div>
-          <div class="progress-meta" id="progressMeta"></div>
+      <!-- Status banner -->
+      <div id="status" class="status"></div>
+
+      <!-- Recent Downloads Dashboard -->
+      <section class="card" id="historyCard">
+        <div class="history-header">
+          <div class="section-title" style="margin:0">Recent Downloads</div>
+          <button id="clearHistoryBtn" class="btn-link" type="button">Clear</button>
+        </div>
+        <div id="historyList" class="history-list">
+          <div class="empty-hint">No recent downloads</div>
         </div>
       </section>
-
-      <div id="status" class="status"></div>
     </main>
   </div>
 

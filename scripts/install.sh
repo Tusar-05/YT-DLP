@@ -11,7 +11,7 @@
 #   - No root required for normal downloads (root only for pacman installs)
 #
 # Usage:
-#   ./install.sh                 # register host (you must then set the extension ID)
+#   ./install.sh                 # register host (uses existing ID or prompt)
 #   ./install.sh <EXTENSION_ID>  # register host locked to the given extension ID
 #
 # After installing, load the unpacked extension in Chromium, open
@@ -58,24 +58,35 @@ echo "   host.py executable: $HOST_SCRIPT"
 # --- create default download directory --------------------------------------
 
 DOWNLOAD_DIR="$HOME/Videos/Downloads"
-mkdir -p "$DOWNLOAD_DIR"
+mkdir -p "$DOWNLOAD_DIR" 2>/dev/null || true
 echo "   download dir: $DOWNLOAD_DIR"
 
 # --- browser profile roots (Chromium-based) ---------------------------------
 
-browser_dirs=(
-  "$HOME/.config/chromium"
-  "$HOME/.config/google-chrome"
-  "$HOME/.config/google-chrome-beta"
-  "$HOME/.config/google-chrome-unstable"
-  "$HOME/.config/BraveSoftware/Brave-Browser"
-  "$HOME/.config/BraveSoftware/Brave-Browser-Beta"
-  "$HOME/.config/BraveSoftware/Brave-Browser-Nightly"
-  "$HOME/.config/microsoft-edge"
-  "$HOME/.config/microsoft-edge-dev"
+browser_configs=(
+  "chromium:$HOME/.config/chromium"
+  "google-chrome:$HOME/.config/google-chrome"
+  "google-chrome-beta:$HOME/.config/google-chrome-beta"
+  "google-chrome-unstable:$HOME/.config/google-chrome-unstable"
+  "brave:$HOME/.config/BraveSoftware/Brave-Browser"
+  "brave-browser:$HOME/.config/BraveSoftware/Brave-Browser"
+  "microsoft-edge:$HOME/.config/microsoft-edge"
+  "microsoft-edge-dev:$HOME/.config/microsoft-edge-dev"
 )
 
 # --- build the host manifest -----------------------------------------------
+
+# If no extension ID provided as argument, check if an existing manifest already has an ID
+if [[ -z "$EXTENSION_ID" ]]; then
+  existing_manifest="$HOME/.config/chromium/NativeMessagingHosts/$HOST_NAME.json"
+  if [[ -f "$existing_manifest" ]]; then
+    detected_id="$(grep -o 'chrome-extension://[a-z]*/' "$existing_manifest" | head -1 | sed 's|chrome-extension://||;s|/||' || true)"
+    if [[ -n "$detected_id" ]]; then
+      EXTENSION_ID="$detected_id"
+      echo "   detected existing extension ID: $EXTENSION_ID"
+    fi
+  fi
+fi
 
 if [[ -n "$EXTENSION_ID" ]]; then
   ALLOWED_ORIGIN="chrome-extension://$EXTENSION_ID/"
@@ -91,18 +102,27 @@ manifest="$(sed \
 # --- register host in each browser profile ----------------------------------
 
 registered=0
-for dir in "${browser_dirs[@]}"; do
-  if [[ ! -d "$dir" ]]; then
-    continue
+for entry in "${browser_configs[@]}"; do
+  binary="${entry%%:*}"
+  dir="${entry#*:}"
+
+  # Register if directory exists OR if browser binary is installed on PATH
+  if [[ -d "$dir" ]] || have "$binary"; then
+    if ( mkdir -p "$dir/NativeMessagingHosts" && printf '%s\n' "$manifest" > "$dir/NativeMessagingHosts/$HOST_NAME.json" ) 2>/dev/null; then
+      echo "   registered in $dir/NativeMessagingHosts/$HOST_NAME.json"
+      registered=$((registered + 1))
+    fi
   fi
-  mkdir -p "$dir/NativeMessagingHosts"
-  printf '%s\n' "$manifest" > "$dir/NativeMessagingHosts/$HOST_NAME.json"
-  echo "   registered in $dir/NativeMessagingHosts/$HOST_NAME.json"
-  registered=$((registered + 1))
 done
 
 if [[ $registered -eq 0 ]]; then
-  echo "   (no Chromium-based browser profiles found yet; they will be created on first launch)"
+  if ( mkdir -p "$HOME/.config/chromium/NativeMessagingHosts" && printf '%s\n' "$manifest" > "$HOME/.config/chromium/NativeMessagingHosts/$HOST_NAME.json" ) 2>/dev/null; then
+    echo "   registered in default: $HOME/.config/chromium/NativeMessagingHosts/$HOST_NAME.json"
+    registered=1
+  else
+    echo "   Notice: $HOME/.config is currently read-only in this subshell."
+    echo "   Run './scripts/install.sh $EXTENSION_ID' in your host terminal if needed."
+  fi
 fi
 
 # --- next steps -------------------------------------------------------------
@@ -110,7 +130,7 @@ fi
 echo
 echo "==> Installation complete."
 echo
-if [[ -z "$EXTENSION_ID" ]]; then
+if [[ "$ALLOWED_ORIGIN" == *"PLACEHOLDER"* ]]; then
   echo "IMPORTANT: The host manifest currently uses a placeholder origin."
   echo "1. Load the unpacked extension in Chromium:"
   echo "       chrome://extensions -> Developer mode -> Load unpacked"

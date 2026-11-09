@@ -1,11 +1,9 @@
 /**
  * options.js — Settings page controller.
- * Reads/writes user config via the Native Messaging host and persists defaults.
+ * Reads/writes user config and displays backend tool status via native messaging.
  */
 
 (function () {
-  const HOST_NAME = "com.yt-dlp-extension.host";
-
   const els = {
     downloadDir: document.getElementById("downloadDir"),
     saveDirBtn: document.getElementById("saveDirBtn"),
@@ -16,33 +14,28 @@
     checkHostBtn: document.getElementById("checkHostBtn"),
     hostStatus: document.getElementById("hostStatus"),
     saveStatus: document.getElementById("saveStatus"),
+    hostPath: document.getElementById("hostPath"),
+    ytdlpVersion: document.getElementById("ytdlpVersion"),
+    ffmpegVersion: document.getElementById("ffmpegVersion"),
+    pythonVersion: document.getElementById("pythonVersion"),
+    updateInfo: document.getElementById("updateInfo"),
+    updateCmd: document.getElementById("updateCmd"),
   };
 
-  let port = null;
-
-  function connectNative() {
-    if (port) return port;
-    port = chrome.runtime.connectNative(HOST_NAME);
-    port.onMessage.addListener((msg) => {
-      // streaming/unsolicited messages not used on options page
-    });
-    return port;
-  }
-
-  function send(msg) {
-    if (!port) connectNative();
+  function sendNative(payload) {
     return new Promise((resolve, reject) => {
-      const reqId = crypto.randomUUID?.() || Math.random().toString(36).slice(2);
-      msg.req_id = reqId;
-      const once = (reply) => {
-        if (reply && reply.req_id === reqId) {
-          port.onMessage.removeListener(once);
-          if (reply.type === "error" || reply.type.includes("failed")) reject(new Error(reply.message || reply.error || "failed"));
-          else resolve(reply);
+      chrome.runtime.sendMessage({ action: "nativeRequest", payload }, (res) => {
+        if (chrome.runtime.lastError) {
+          return reject(new Error(chrome.runtime.lastError.message));
         }
-      };
-      port.onMessage.addListener(once);
-      try { port.postMessage(msg); } catch (e) { port.onMessage.removeListener(once); reject(e); }
+        if (!res) {
+          return reject(new Error("No response from background worker"));
+        }
+        if (!res.ok) {
+          return reject(new Error(res.error || "Request failed"));
+        }
+        resolve(res.data);
+      });
     });
   }
 
@@ -53,8 +46,8 @@
 
   async function loadConfig() {
     try {
-      const res = await send({ type: "config", action: "get" });
-      if (res.ok && res.data) {
+      const res = await sendNative({ type: "config", action: "get" });
+      if (res && res.data) {
         const d = res.data;
         if (d.download_dir) els.downloadDir.value = d.download_dir;
         if (d.default_audio_format) els.audioFormatSelect.value = d.default_audio_format;
@@ -67,6 +60,28 @@
     }
   }
 
+  async function loadVersionInfo() {
+    try {
+      const res = await sendNative({ type: "version" });
+      if (res && res.data) {
+        const d = res.data;
+        els.hostPath.textContent = d.host_path || "configured";
+        els.ytdlpVersion.textContent = d.ytdlp_version || "unknown";
+        els.ffmpegVersion.textContent = d.ffmpeg_version ? d.ffmpeg_version.split(" ")[2] || d.ffmpeg_version : "unknown";
+        els.pythonVersion.textContent = d.python_version || "unknown";
+        if (d.update_command) {
+          els.updateCmd.textContent = d.update_command;
+          els.updateInfo.style.display = "block";
+        }
+      }
+    } catch (e) {
+      els.hostPath.textContent = "error connecting to host";
+      els.ytdlpVersion.textContent = "unavailable";
+      els.ffmpegVersion.textContent = "unavailable";
+      els.pythonVersion.textContent = "unavailable";
+    }
+  }
+
   async function saveConfig() {
     const cfg = {
       download_dir: els.downloadDir.value.trim() || "~/Videos/Downloads",
@@ -76,11 +91,16 @@
       default_video_quality: els.defaultQualitySelect.value,
     };
     try {
-      const res = await send({ type: "config", action: "set", config: cfg });
-      if (res.ok) {
+      const res = await sendNative({ type: "config", action: "set", config: cfg });
+      if (res && res.ok) {
         setStatus(els.saveStatus, "Settings saved.", false);
+        setTimeout(() => {
+          if (els.saveStatus.textContent === "Settings saved.") {
+            els.saveStatus.textContent = "";
+          }
+        }, 3000);
       } else {
-        setStatus(els.saveStatus, "Save failed: " + (res.error || "unknown"), true);
+        setStatus(els.saveStatus, "Save failed: " + (res?.error || "unknown"), true);
       }
     } catch (e) {
       setStatus(els.saveStatus, "Save error: " + e.message, true);
@@ -88,23 +108,30 @@
   }
 
   async function checkHost() {
+    els.hostStatus.textContent = "Pinging…";
+    els.hostStatus.className = "hint";
     try {
-      const res = await send({ type: "ping" });
-      setStatus(els.hostStatus, "Host reachable (pong: " + (res.ok ? "ok" : "no") + ").", false);
+      const res = await sendNative({ type: "ping" });
+      if (res && res.ok) {
+        setStatus(els.hostStatus, "Host connected successfully.", false);
+        loadVersionInfo();
+      } else {
+        setStatus(els.hostStatus, "Host error: " + (res?.error || "unknown"), true);
+      }
     } catch (e) {
-      setStatus(els.hostStatus, "Host not reachable: " + e.message, true);
+      setStatus(els.hostStatus, "Host unreachable: " + e.message, true);
     }
   }
 
   els.saveDirBtn.addEventListener("click", saveConfig);
   els.checkHostBtn.addEventListener("click", checkHost);
 
-  // Auto-save on any change
+  // Auto-save on change
   for (const el of [els.audioFormatSelect, els.audioBitrateSelect, els.videoContainerSelect, els.defaultQualitySelect]) {
     el.addEventListener("change", saveConfig);
   }
   els.downloadDir.addEventListener("blur", saveConfig);
 
   loadConfig();
-
+  loadVersionInfo();
 })();

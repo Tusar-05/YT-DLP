@@ -1,16 +1,21 @@
 /**
  * popup.js — yt-dlp Extension popup controller.
  *
- * Talks to the Python Native Messaging host (com.yt-dlp-extension.host) via a
- * connected Port so we can stream download progress in real time. Each request
- * carries a req_id; responses are matched back by req_id.
+ * Coordinates with background.js to detect media, fetch metadata and formats,
+ * trigger downloads, stream real-time progress, and display download history.
  */
 
 (function () {
-  const HOST_NAME = "com.yt-dlp-extension.host";
-
-  // DOM refs
+  // DOM references
   const els = {
+    settingsBtn: document.getElementById("settingsBtn"),
+    activeDownloadCard: document.getElementById("activeDownloadCard"),
+    activeTitle: document.getElementById("activeTitle"),
+    cancelActiveBtn: document.getElementById("cancelActiveBtn"),
+    activeProgressFill: document.getElementById("activeProgressFill"),
+    activeProgressText: document.getElementById("activeProgressText"),
+    activeProgressMeta: document.getElementById("activeProgressMeta"),
+
     urlInput: document.getElementById("urlInput"),
     detectBtn: document.getElementById("detectBtn"),
     loadingSpinner: document.getElementById("loadingSpinner"),
@@ -20,124 +25,86 @@
     channelText: document.getElementById("channelText"),
     durationText: document.getElementById("durationText"),
     urlText: document.getElementById("urlText"),
+
     optionsCard: document.getElementById("optionsCard"),
     modeSeg: document.getElementById("modeSeg"),
     videoFields: document.getElementById("videoFields"),
     audioFields: document.getElementById("audioFields"),
-    containerFields: document.getElementById("containerFields"),
     resolutionSelect: document.getElementById("resolutionSelect"),
+    codecSelect: document.getElementById("codecSelect"),
     containerSelect: document.getElementById("containerSelect"),
     audioFormatSelect: document.getElementById("audioFormatSelect"),
     audioBitrateSelect: document.getElementById("audioBitrateSelect"),
+    playlistRow: document.getElementById("playlistRow"),
+    playlistCb: document.getElementById("playlistCb"),
+    playlistLabel: document.getElementById("playlistLabel"),
     subtitlesCb: document.getElementById("subtitlesCb"),
     thumbnailCb: document.getElementById("thumbnailCb"),
     downloadDir: document.getElementById("downloadDir"),
     browseDirBtn: document.getElementById("browseDirBtn"),
+
     downloadBtn: document.getElementById("downloadBtn"),
-    progressContainer: document.getElementById("progressContainer"),
-    progressFill: document.getElementById("progressFill"),
-    progressText: document.getElementById("progressText"),
-    progressMeta: document.getElementById("progressMeta"),
     status: document.getElementById("status"),
+    historyList: document.getElementById("historyList"),
+    clearHistoryBtn: document.getElementById("clearHistoryBtn"),
   };
 
   // State
-  let port = null;
-  let pending = new Map(); // req_id => { resolve, reject, type }
   let currentUrl = "";
-  let currentFormats = { video: [], audio: [], title: "" };
+  let currentMediaData = null;
   let currentMode = "video";
   let activeDownloadId = null;
 
-  // ---------- Native Messaging client ----------
-
-  function connectNative() {
-    if (port) return port;
-    try {
-      port = chrome.runtime.connectNative(HOST_NAME);
-    } catch (e) {
-      setStatus("Native Messaging host not available. Install the host first.", true);
-      throw e;
-    }
-    port.onMessage.addListener(onNativeMessage);
-    port.onDisconnect.addListener(() => {
-      port = null;
-    });
-    return port;
-  }
-
-  function sendNativeMessage(msg) {
-    if (!port) connectNative();
+  // ------------------------------------------------------------------ //
+  // Communication via background service worker
+  // ------------------------------------------------------------------ //
+  function sendMsg(action, payload) {
     return new Promise((resolve, reject) => {
-      const reqId = crypto.randomUUID?.() || Math.random().toString(36).slice(2);
-      msg.req_id = reqId;
-      pending.set(reqId, { resolve, reject, type: msg.type });
-      try {
-        port.postMessage(msg);
-      } catch (e) {
-        pending.delete(reqId);
-        reject(e);
-      }
+      chrome.runtime.sendMessage({ action, payload }, (response) => {
+        if (chrome.runtime.lastError) {
+          return reject(new Error(chrome.runtime.lastError.message));
+        }
+        if (!response) {
+          return reject(new Error("No response from background worker"));
+        }
+        if (!response.ok) {
+          return reject(new Error(response.error || "Operation failed"));
+        }
+        resolve(response);
+      });
     });
   }
 
-  function onNativeMessage(message) {
-    const { req_id, type } = message;
-    const waiter = req_id ? pending.get(req_id) : null;
+  // Listen to background worker broadcast events
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (!msg || typeof msg !== "object") return;
 
-    // Streaming / unsolicited messages (no req_id match)
-    if (!waiter) {
-      handleStreamMessage(message);
-      return;
+    if (msg.type === "download_progress") {
+      activeDownloadId = msg.download_id;
+      renderActiveProgress(msg);
+    } else if (msg.type === "download_completed") {
+      setStatus("Download complete!", false);
+      hideActiveDownload();
+      refreshState();
+    } else if (msg.type === "download_failed") {
+      const err = msg.record?.error || "Download failed";
+      setStatus(msg.record?.status === "cancelled" ? "Download cancelled." : "Download failed: " + err, true);
+      hideActiveDownload();
+      refreshState();
     }
+  });
 
-    pending.delete(req_id);
-    if (message.type.endsWith("_result") || message.type === "pong") {
-      waiter.resolve(message);
-    } else if (message.type === "error" || message.type.includes("failed")) {
-      waiter.reject(new Error(message.message || message.error || "Request failed"));
-    } else {
-      waiter.resolve(message);
-    }
-  }
-
-  function handleStreamMessage(message) {
-    switch (message.type) {
-      case "progress":
-        renderProgress(message);
-        break;
-      case "download_complete":
-        renderProgress({ type: "download_complete", ...message });
-        setStatus("Download complete!", false);
-        activeDownloadId = null;
-        setDownloadButtonState(false);
-        break;
-      case "download_failed":
-        setStatus("Download failed: " + (message.error || "unknown"), true);
-        activeDownloadId = null;
-        setDownloadButtonState(false);
-        break;
-      default:
-        // ignore unknown stream messages
-        break;
-    }
-  }
-
-  // ---------- Helpers ----------
-
+  // ------------------------------------------------------------------ //
+  // UI Helpers
+  // ------------------------------------------------------------------ //
   function setStatus(text, isError) {
-    const s = els.status;
-    s.textContent = text;
-    s.className = isError ? "err" : "ok";
+    els.status.textContent = text;
+    els.status.className = isError ? "status err" : "status ok";
   }
 
   function clearStatus() {
     els.status.textContent = "";
-    els.status.className = "";
-  }
-
-  function setDownloadButtonState(enabled) {
-    els.downloadBtn.disabled = !enabled;
+    els.status.className = "status";
   }
 
   function fmtDuration(seconds) {
@@ -148,180 +115,243 @@
     return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
   }
 
-  function formatBytes(bytes) {
-    if (!bytes) return "";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB", "TB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+  function renderActiveProgress(data) {
+    els.activeDownloadCard.style.display = "block";
+    if (data.title) els.activeTitle.textContent = data.title;
+    const pct = typeof data.percent === "number" ? data.percent : 0;
+    els.activeProgressFill.style.width = pct + "%";
+    els.activeProgressText.textContent = pct.toFixed(1) + "%";
+
+    const parts = [];
+    if (data.speed_str) parts.push(data.speed_str);
+    if (data.eta_str) parts.push("ETA " + data.eta_str);
+    els.activeProgressMeta.textContent = parts.join("  ·  ");
   }
 
-  function renderProgress(message) {
-    if (message.type === "progress") {
-      const pct = message.percent || 0;
-      els.progressContainer.style.display = "block";
-      els.progressFill.style.width = pct + "%";
-      els.progressText.textContent = pct.toFixed(1) + "%";
-      const parts = [];
-      if (message.speed_str) parts.push(message.speed_str);
-      if (message.eta_str) parts.push("ETA " + message.eta_str);
-      els.progressMeta.textContent = parts.join("  ·  ");
+  function hideActiveDownload() {
+    els.activeDownloadCard.style.display = "none";
+    activeDownloadId = null;
+    els.downloadBtn.disabled = !currentMediaData;
+    els.downloadBtn.textContent = "Download";
+  }
+
+  function renderHistory(list) {
+    const container = els.historyList;
+    container.innerHTML = "";
+
+    if (!list || list.length === 0) {
+      container.innerHTML = '<div class="empty-hint">No recent downloads</div>';
+      return;
+    }
+
+    list.slice(0, 10).forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "history-item";
+
+      const title = document.createElement("div");
+      title.className = "history-item-title";
+      title.textContent = item.title || item.filepath || item.url || "Media";
+      title.title = item.filepath || item.url || "";
+
+      const badge = document.createElement("span");
+      const st = item.status || "completed";
+      badge.className = `history-badge ${st}`;
+      badge.textContent = st;
+
+      row.appendChild(title);
+      row.appendChild(badge);
+      container.appendChild(row);
+    });
+  }
+
+  // ------------------------------------------------------------------ //
+  // State Initialization
+  // ------------------------------------------------------------------ //
+  async function refreshState() {
+    try {
+      const res = await sendMsg("getDownloadsState");
+      if (res.active && res.active.length > 0) {
+        const top = res.active[0];
+        activeDownloadId = top.download_id;
+        renderActiveProgress(top);
+      }
+      renderHistory(res.history || []);
+    } catch {
+      // background not ready yet
     }
   }
 
-  function resetProgress() {
-    els.progressContainer.style.display = "none";
-    els.progressFill.style.width = "0%";
-    els.progressText.textContent = "0%";
-    els.progressMeta.textContent = "";
+  async function loadDefaultConfig() {
+    try {
+      const res = await sendMsg("nativeRequest", { type: "config", action: "get" });
+      if (res.ok && res.data?.data) {
+        const cfg = res.data.data;
+        if (cfg.download_dir) {
+          els.downloadDir.placeholder = cfg.download_dir;
+          if (!els.downloadDir.value) els.downloadDir.value = cfg.download_dir;
+        }
+        if (cfg.default_video_container) els.containerSelect.value = cfg.default_video_container;
+        if (cfg.default_audio_format) els.audioFormatSelect.value = cfg.default_audio_format;
+        if (cfg.default_audio_quality) els.audioBitrateSelect.value = String(cfg.default_audio_quality);
+      }
+    } catch {
+      // ignore
+    }
   }
 
-  // ---------- URL detection from active tab ----------
-
+  // ------------------------------------------------------------------ //
+  // URL Detection & Metadata
+  // ------------------------------------------------------------------ //
   async function detectCurrentTab() {
-    setStatus("Detecting current tab…", false);
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab || !tab.url) {
-        setStatus("Could not read current tab URL.", true);
+      if (!tab || !tab.url) return;
+      const url = tab.url.trim();
+
+      // Ignore browser internal schemes
+      if (!url.startsWith("http://") && !url.startsWith("https://")) {
         return;
       }
-      currentUrl = tab.url;
+
+      currentUrl = url;
       els.urlInput.value = currentUrl;
-      els.detectBtn.textContent = "Using current tab";
-      setStatus("URL detected.", false);
-      loadMetadata(currentUrl);
+      loadMediaInfo(currentUrl);
     } catch (e) {
-      setStatus("Tab access denied. Paste a URL manually.", true);
+      console.warn("Could not query tab URL:", e);
     }
   }
 
-  // ---------- Metadata / formats ----------
+  async function loadMediaInfo(url) {
+    if (!url || (!url.startsWith("http://") && !url.startsWith("https://"))) {
+      setStatus("Please enter a valid http(s) URL", true);
+      return;
+    }
 
-  async function loadMetadata(url) {
     currentUrl = url;
     clearStatus();
-    resetProgress();
-    setLoading(true);
+    els.loadingSpinner.style.display = "flex";
     els.metaContainer.style.display = "none";
     els.optionsCard.style.display = "none";
-    setDownloadButtonState(false);
+    els.downloadBtn.disabled = true;
 
     try {
-      const res = await sendNativeMessage({ type: "metadata", url });
-      if (!res.ok) throw new Error(res.error || "Metadata failed");
-      const d = res.data || {};
-      els.titleText.textContent = d.title || "Unknown title";
-      els.channelText.textContent = d.channel ? d.channel : "";
-      els.durationText.textContent = d.duration ? fmtDuration(d.duration) : "";
-      els.urlText.textContent = d.webpage_url || url;
-      if (d.thumbnail) {
-        els.thumbImg.src = d.thumbnail;
-        els.thumbImg.onerror = () => { els.thumbImg.src = ""; };
+      // Single call to get both metadata and available formats!
+      const res = await sendMsg("nativeRequest", { type: "media_info", url });
+      const data = res.data?.data;
+      if (!data) throw new Error("No media information returned");
+
+      currentMediaData = data;
+
+      // Render metadata preview
+      els.titleText.textContent = data.title || "Untitled";
+      els.channelText.textContent = data.channel ? `Channel: ${data.channel}` : "";
+      els.durationText.textContent = data.duration ? `Duration: ${fmtDuration(data.duration)}` : "";
+      els.urlText.textContent = data.webpage_url || url;
+
+      if (data.thumbnail) {
+        els.thumbImg.src = data.thumbnail;
+        els.thumbImg.style.display = "block";
+        els.thumbImg.onerror = () => { els.thumbImg.style.display = "none"; };
       } else {
-        els.thumbImg.src = "";
+        els.thumbImg.style.display = "none";
       }
       els.metaContainer.style.display = "flex";
 
-      // Now fetch formats
-      await loadFormats(url);
-    } catch (e) {
-      setStatus("Metadata error: " + e.message, true);
+      // Playlist indicator
+      if (data.is_playlist) {
+        els.playlistRow.style.display = "inline-flex";
+        els.playlistLabel.textContent = data.playlist_count
+          ? `Download entire playlist (${data.playlist_count} videos)`
+          : "Download entire playlist";
+        els.playlistCb.checked = true;
+      } else {
+        els.playlistRow.style.display = "none";
+        els.playlistCb.checked = false;
+      }
+
+      // Populate resolutions
+      renderResolutionOptions(data.formats?.video || []);
+
+      // Populate codecs
+      const codecs = data.formats?.codecs || [];
+      updateCodecOptions(codecs);
+
+      els.optionsCard.style.display = "block";
+      els.downloadBtn.disabled = false;
+    } catch (err) {
+      setStatus("Failed to load info: " + err.message, true);
     } finally {
-      setLoading(false);
+      els.loadingSpinner.style.display = "none";
     }
   }
 
-  async function loadFormats(url) {
-    try {
-      const res = await sendNativeMessage({ type: "formats", url });
-      if (!res.ok) throw new Error(res.error || "Formats failed");
-      currentFormats = res.data || { video: [], audio: [], title: "" };
-      renderOptions(currentFormats);
-      els.optionsCard.style.display = "block";
-      setDownloadButtonState(true);
-    } catch (e) {
-      setStatus("Format error: " + e.message, true);
-      // Still show options with defaults
-      renderOptions({ video: [], audio: [], title: "" });
-      els.optionsCard.style.display = "block";
-      setDownloadButtonState(true);
-    }
-  }
+  function renderResolutionOptions(videoFormats) {
+    const sel = els.resolutionSelect;
+    sel.innerHTML = "";
 
-  function setLoading(loading) {
-    els.loadingSpinner.style.display = loading ? "inline-flex" : "none";
-    els.urlInput.disabled = loading;
-    els.detectBtn.disabled = loading;
-  }
-
-  // ---------- Render options (resolution / format selectors) ----------
-
-  function renderOptions(formats) {
-    const resSel = els.resolutionSelect;
-    resSel.innerHTML = "";
-
-    // Determine available heights from video formats
     const heights = new Set();
-    for (const f of (formats.video || [])) {
+    for (const f of videoFormats) {
       if (f.height) heights.add(f.height);
     }
-    const sortedHeights = [...heights].sort((a, b) => b - a);
 
-    const targetResolutions = [2160, 1440, 1080, 720, 480, 360, 240, 144];
-    const shown = new Set();
-    for (const h of targetResolutions) {
-      if (heights.has(h) && !shown.has(h)) {
+    const priority = [2160, 1440, 1080, 720, 480, 360, 240, 144];
+    const added = new Set();
+
+    // Default "Best"
+    const bestOpt = document.createElement("option");
+    bestOpt.value = "best";
+    bestOpt.textContent = "Best Available Quality";
+    sel.appendChild(bestOpt);
+
+    for (const h of priority) {
+      if (heights.has(h)) {
         const opt = document.createElement("option");
         opt.value = String(h);
-        opt.textContent = h + "p";
-        resSel.appendChild(opt);
-        shown.add(h);
+        opt.textContent = `${h}p` + (h >= 2160 ? " (4K)" : h >= 1080 ? " (HD)" : "");
+        sel.appendChild(opt);
+        added.add(h);
       }
     }
-    // Add any remaining detected heights not in target list
-    for (const h of sortedHeights) {
-      if (!shown.has(h)) {
-        const opt = document.createElement("option");
-        opt.value = String(h);
-        opt.textContent = h + "p";
-        resSel.appendChild(opt);
-        shown.add(h);
-      }
-    }
-    if (resSel.options.length === 0) {
+
+    // Add any remaining heights
+    const remaining = [...heights].filter(h => !added.has(h)).sort((a, b) => b - a);
+    for (const h of remaining) {
       const opt = document.createElement("option");
-      opt.value = "best";
-      opt.textContent = "Best available";
-      resSel.appendChild(opt);
-    }
-
-    // Audio mode toggles visibility
-    updateModeVisibility();
-  }
-
-  function updateModeVisibility() {
-    const isAudio = currentMode === "audio";
-    els.videoFields.style.display = isAudio ? "none" : "block";
-    els.containerFields.style.display = isAudio ? "none" : "block";
-    els.audioFields.style.display = isAudio ? "block" : "none";
-    // Update segment active styling
-    for (const b of els.modeSeg.querySelectorAll(".seg")) {
-      b.classList.toggle("active", b.dataset.mode === currentMode);
+      opt.value = String(h);
+      opt.textContent = `${h}p`;
+      sel.appendChild(opt);
     }
   }
 
-  // ---------- Mode switching ----------
+  function updateCodecOptions(availableCodecs) {
+    const sel = els.codecSelect;
+    for (const opt of sel.options) {
+      if (!opt.value) continue;
+      const isAvailable = availableCodecs.includes(opt.value);
+      opt.textContent = opt.value + (isAvailable ? " (Available)" : "");
+    }
+  }
 
+  // ------------------------------------------------------------------ //
+  // Mode Switching
+  // ------------------------------------------------------------------ //
   els.modeSeg.addEventListener("click", (e) => {
     const btn = e.target.closest(".seg");
     if (!btn) return;
     currentMode = btn.dataset.mode;
-    updateModeVisibility();
+    const isAudio = currentMode === "audio";
+
+    els.videoFields.style.display = isAudio ? "none" : "block";
+    els.audioFields.style.display = isAudio ? "block" : "none";
+
+    for (const b of els.modeSeg.querySelectorAll(".seg")) {
+      b.classList.toggle("active", b.dataset.mode === currentMode);
+    }
   });
 
-  // ---------- Download ----------
-
+  // ------------------------------------------------------------------ //
+  // Download Action
+  // ------------------------------------------------------------------ //
   async function startDownload() {
     const url = els.urlInput.value.trim() || currentUrl;
     if (!url) {
@@ -329,82 +359,102 @@
       return;
     }
 
-    const downloadDir = els.downloadDir.value.trim() || null;
     const mode = currentMode;
+    const downloadDir = els.downloadDir.value.trim() || undefined;
+
     const params = {
       type: "download",
       url,
+      title: currentMediaData?.title || "Media download",
       mode,
-      download_dir: downloadDir || undefined,
+      download_dir: downloadDir,
       subtitles: els.subtitlesCb.checked,
       thumbnail: els.thumbnailCb.checked,
+      playlist: els.playlistCb.checked,
     };
 
     if (mode === "audio") {
       params.audio_format = els.audioFormatSelect.value;
       params.audio_quality = els.audioBitrateSelect.value;
     } else {
-      params.format_id = els.resolutionSelect.value === "best" ? "best" : `bestvideo[height<=${els.resolutionSelect.value}]+bestaudio/best[height<=${els.resolutionSelect.value}]`;
-      params.container = els.containerSelect.value;
       params.quality = els.resolutionSelect.value;
+      params.codec = els.codecSelect.value || undefined;
+      params.container = els.containerSelect.value;
     }
 
     clearStatus();
-    resetProgress();
-    setDownloadButtonState(false);
-    els.downloadBtn.textContent = "Downloading…";
+    els.downloadBtn.disabled = true;
+    els.downloadBtn.textContent = "Starting…";
 
     try {
-      const res = await sendNativeMessage(params);
-      if (!res.ok) throw new Error(res.error || "Download failed");
+      const res = await sendMsg("startDownload", params);
       activeDownloadId = res.download_id;
+      renderActiveProgress({
+        title: params.title,
+        percent: 0,
+        speed_str: "Connecting...",
+        eta_str: "",
+      });
       setStatus("Download started.", false);
-    } catch (e) {
-      setStatus("Download error: " + e.message, true);
-      setDownloadButtonState(true);
+    } catch (err) {
+      setStatus("Start error: " + err.message, true);
+      els.downloadBtn.disabled = false;
       els.downloadBtn.textContent = "Download";
     }
   }
 
-  // ---------- Event wiring ----------
+  async function cancelActiveDownload() {
+    if (!activeDownloadId) return;
+    els.cancelActiveBtn.disabled = true;
+    els.cancelActiveBtn.textContent = "Cancelling…";
 
+    try {
+      await sendMsg("cancelDownload", { download_id: activeDownloadId });
+      setStatus("Download cancelled.", false);
+      hideActiveDownload();
+      refreshState();
+    } catch (err) {
+      setStatus("Cancel error: " + err.message, true);
+    } finally {
+      els.cancelActiveBtn.disabled = false;
+      els.cancelActiveBtn.textContent = "Cancel";
+    }
+  }
+
+  // ------------------------------------------------------------------ //
+  // Event Bindings
+  // ------------------------------------------------------------------ //
   els.detectBtn.addEventListener("click", detectCurrentTab);
-
-  els.urlInput.addEventListener("input", () => {
-    currentUrl = els.urlInput.value.trim();
-    setDownloadButtonState(false);
-    els.metaContainer.style.display = "none";
-    els.optionsCard.style.display = "none";
-    resetProgress();
-    clearStatus();
-  });
 
   els.urlInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      if (currentUrl) loadMetadata(currentUrl);
+      loadMediaInfo(els.urlInput.value.trim());
     }
   });
 
   els.downloadBtn.addEventListener("click", startDownload);
+  els.cancelActiveBtn.addEventListener("click", cancelActiveDownload);
 
-  // Directory selection via native host config + fallback to default
-  els.browseDirBtn.addEventListener("click", async () => {
-    try {
-      const res = await sendNativeMessage({ type: "config", action: "get" });
-      if (res.ok) {
-        els.downloadDir.value = res.data.download_dir || "";
-      }
-    } catch (e) {
-      // ignore
-    }
-    // Chrome extensions can't open a folder picker directly; user edits the path.
-    els.downloadDir.readOnly = false;
+  els.settingsBtn.addEventListener("click", () => {
+    sendMsg("openOptions");
+  });
+
+  els.clearHistoryBtn.addEventListener("click", async () => {
+    await sendMsg("clearHistory");
+    renderHistory([]);
+  });
+
+  els.browseDirBtn.addEventListener("click", () => {
+    loadDefaultConfig();
     els.downloadDir.focus();
     els.downloadDir.select();
   });
 
-  // Initialize: try to detect current tab on open
+  // ------------------------------------------------------------------ //
+  // Initialization
+  // ------------------------------------------------------------------ //
+  refreshState();
+  loadDefaultConfig();
   detectCurrentTab();
-
 })();

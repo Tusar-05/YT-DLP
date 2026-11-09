@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>yt-dlp Extension Options</title>
+  <title>yt-dlp Extension Settings</title>
   <link rel="stylesheet" href="options.css" />
 </head>
 <body>
@@ -17,20 +17,45 @@
     </header>
 
     <main class="main">
+      <!-- Download directory -->
       <section class="card">
-        <div class="section-title">Default download directory</div>
-        <p class="hint">Files are saved here unless overridden per-download in the popup.</p>
+        <div class="section-title">Default Download Directory</div>
+        <p class="hint">Files are saved here unless overridden in the popup.</p>
         <div class="path-row">
-          <input type="text" id="downloadDir" readonly placeholder="~/Videos/Downloads" />
+          <input type="text" id="downloadDir" placeholder="~/Videos/Downloads" />
           <button id="saveDirBtn" class="btn btn-primary">Save</button>
         </div>
       </section>
 
+      <!-- Video preferences -->
       <section class="card">
-        <div class="section-title">Default audio format</div>
+        <div class="section-title">Default Video Container</div>
+        <p class="hint">Preferred output container when merging video and audio streams.</p>
+        <select id="videoContainerSelect">
+          <option value="mp4">MP4 (Recommended)</option>
+          <option value="webm">WebM</option>
+        </select>
+      </section>
+
+      <section class="card">
+        <div class="section-title">Default Video Quality</div>
+        <p class="hint">Default resolution preset when no explicit resolution is chosen.</p>
+        <select id="defaultQualitySelect">
+          <option value="best">Best Available Quality</option>
+          <option value="2160">2160p (4K)</option>
+          <option value="1440">1440p</option>
+          <option value="1080">1080p (HD)</option>
+          <option value="720">720p</option>
+          <option value="480">480p</option>
+        </select>
+      </section>
+
+      <!-- Audio preferences -->
+      <section class="card">
+        <div class="section-title">Default Audio Format</div>
         <select id="audioFormatSelect">
           <option value="mp3">MP3</option>
-          <option value="m4a">M4A</option>
+          <option value="m4a">M4A (AAC)</option>
           <option value="opus">OPUS</option>
           <option value="wav">WAV</option>
           <option value="flac">FLAC</option>
@@ -38,43 +63,36 @@
       </section>
 
       <section class="card">
-        <div class="section-title">Default audio bitrate</div>
+        <div class="section-title">Default Audio Bitrate</div>
         <select id="audioBitrateSelect">
-          <option value="64">64 kbps</option>
-          <option value="128">128 kbps</option>
-          <option value="192">192 kbps</option>
-          <option value="256">256 kbps</option>
           <option value="320">320 kbps</option>
+          <option value="256">256 kbps</option>
+          <option value="192">192 kbps</option>
+          <option value="128">128 kbps</option>
+          <option value="64">64 kbps</option>
         </select>
       </section>
 
+      <!-- Host & Tool Information -->
       <section class="card">
-        <div class="section-title">Default video container</div>
-        <select id="videoContainerSelect">
-          <option value="mp4">MP4</option>
-          <option value="webm">WebM</option>
-        </select>
-      </section>
+        <div class="section-title">Backend Status & Versions</div>
+        <div class="info-table">
+          <div class="info-row"><span class="info-label">Host Name:</span> <code>com.yt-dlp-extension.host</code></div>
+          <div class="info-row"><span class="info-label">Host Path:</span> <code id="hostPath">detecting…</code></div>
+          <div class="info-row"><span class="info-label">yt-dlp:</span> <span id="ytdlpVersion" class="badge">checking…</span></div>
+          <div class="info-row"><span class="info-label">FFmpeg:</span> <span id="ffmpegVersion" class="badge">checking…</span></div>
+          <div class="info-row"><span class="info-label">Python:</span> <span id="pythonVersion" class="badge">checking…</span></div>
+        </div>
 
-      <section class="card">
-        <div class="section-title">Default quality</div>
-        <p class="hint">Applied when no explicit resolution is chosen in the popup.</p>
-        <select id="defaultQualitySelect">
-          <option value="best">Best available</option>
-          <option value="2160">2160p (4K)</option>
-          <option value="1440">1440p</option>
-          <option value="1080">1080p</option>
-          <option value="720">720p</option>
-          <option value="480">480p</option>
-        </select>
-      </section>
+        <div style="margin-top:12px; display:flex; gap:10px; align-items:center;">
+          <button id="checkHostBtn" class="btn btn-outline">Check Host Connection</button>
+          <span id="hostStatus" class="hint" style="margin:0"></span>
+        </div>
 
-      <section class="card">
-        <div class="section-title">Native Messaging host</div>
-        <p class="hint">Host name: <code>com.yt-dlp-extension.host</code><br />
-        Host path: <code>/home/tusar/Projects/YT-DLP/native-host/host.py</code></p>
-        <button id="checkHostBtn" class="btn btn-outline">Check host availability</button>
-        <div id="hostStatus" class="hint" style="margin-top:8px"></div>
+        <div id="updateInfo" class="update-box" style="margin-top:12px; display:none">
+          <div style="font-weight:600; margin-bottom:4px">How to update yt-dlp on Omarchy Linux:</div>
+          <code id="updateCmd">sudo pacman -Syu yt-dlp</code>
+        </div>
       </section>
 
       <div id="saveStatus" class="status"></div>
