@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YT-DLP Downloader</title>
+  <link rel="stylesheet" href="popup.css">
+  <!-- Preload fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Logo/Header -->
+  <div class="popup-header">
+    <svg class="logo-icon" viewBox="0 0 24 24" fill="white">
+      <path d="M19 9h-4V4H9v5H5v7h4v4h5v-4h4v-7z"/>
+    </svg>
+    <h1>YT-DLP Downloader</h1>
+    <p class="subtitle">Powerful video extraction for YouTube</p>
+  </div>
+
+  <!-- Loading State -->
+  <div id="loading-container" class="popup-content">
+    <div class="spinner"></div>
+    <p>Loading YouTube video...</p>
+  </div>
+
+  <!-- Error State (hidden by default) -->
+  <div id="error-container" class="popup-content hidden">
+    <div class="error-icon">⚠️</div>
+    <h3>Could not detect YouTube video</h3>
+    <p>Please make sure you're on a valid YouTube watch page.</p>
+  </div>
+
+  <!-- Main Content (hidden by default) -->
+  <div id="main-container" class="popup-content hidden">
+    
+    <!-- Video Info -->
+    <div class="video-info">
+      <div class="thumbnail" id="video-thumbnail">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
+          <line x1="7" y1="2" x2="7" y2="22"/>
+          <line x1="17" y1="2" x2="17" y2="22"/>
+          <line x1="2" y1="12" x2="22" y2="12"/>
+          <line x1="2" y1="7" x2="7" y2="7"/>
+          <line x1="2" y1="17" x2="7" y2="17"/>
+          <line x1="17" y1="12" x2="22" y2="12"/>
+        </svg>
+      </div>
+      <h2 class="video-title" id="video-title">Loading...</h2>
+      <p class="uploader" id="uploader-name">Unknown</p>
+      <div class="meta-info">
+        <span class="duration" id="video-duration">0:00</span>
+        <span class="views" id="view-count">• Views available</span>
+      </div>
+    </div>
+
+    <!-- Format Selector -->
+    <div class="format-section">
+      <label>Select Format:</label>
+      
+      <div class="format-tabs" id="format-tabs">
+        <!-- Video formats will be injected here -->
+      </div>
+
+      <div class="format-options" id="format-options">
+        <!-- Video quality options -->
+      </div>
+
+      <div class="audio-only-section hidden" id="audio-only-section">
+        <label class="checkbox-label">
+          <input type="checkbox" id="audio-only-checkbox">
+          <span>Audio only</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Subtitle Section -->
+    <div class="subtitle-section hidden" id="subtitle-section">
+      <h4>Subtitles</h4>
+      <div class="subtitle-list" id="subtitle-list"></div>
+      <label class="checkbox-label">
+        <input type="checkbox" id="include-subtitles">
+        <span>Download subtitles</span>
+      </label>
+    </div>
+
+    <!-- Download Action -->
+    <button id="download-btn" class="btn-primary">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Download Selected
+    </button>
+
+    <!-- Progress Bar (hidden by default) -->
+    <div id="progress-container" class="hidden">
+      <div class="progress-bar-wrapper">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+      <p class="progress-text" id="progress-text">Starting download...</p>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="popup-footer">
+    <a href="https://github.com/Tusar-05/YT-DLP" target="_blank" class="link-icon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.43 9.8 8.13 11.48.6.13.84-.26.84-.58v-1.85c-3.35.74-4.04-1.65-4.04-1.65-.54-1.36-1.31-1.7-1.31-1.7-1.07-.74.08-.72.08-.72 1.2.08 1.83 1.24 1.83 1.24 1.08 1.86 2.83 1.32 3.5 1 .09-.66.28-1.1.51-1.33-4.66-.54-9.57-2.41-9.57-10.83 0-2.41.85-4.44 2.24-6a7.69 7.69 0 01.9-1.2c-.17-.42-.75-2.21 1.67-2.53.44-.12.82-.17 1.13-.17.84 0 1.67.63 2.13.63.47 0 1.03-.63 2.12-.63.9 0 1.5.63 2.38.63.88 0 1.44-.63 2.27-.63.9 0 1.47.63 2.4.63 1.02 0 1.71-.63 2.21-.63.84 0 1.5.63 2.17.63.9 0 1.53-.63 2.37-.63.84 0 .96.63 1.74.63 1.06 0 1.69.63 2.4 1.63-.85.51-1.72 1.75-1.72 3.55 0 2.08.84 3.95 2.19 5.25-.22.66-.86 1.25-1.72 1.57a4.06 4.06 0 01-1.4 2.7c0 0 .12.38.27.93 0 0 1.32 1.72.35 4.43-.25.61-.84 1.2-1.62 1.35-.02.17-.06.36-.09.55-.02.08.01.16.01.24.01.08.01.16 0 .24-.02.25-.06.5-.16.74-.25.54-.7.8-1.46.84-1.83.89.04.64.04 1.24.04 1.24-1.56 1.17-3.36 1.79-5.26 1.84-.4-.93-.54-1.95-.54-2.97 0-.56.07-1.1.2-1.62 0 0-2.69 0-5.57-1.86.66-.85 1.23-1.92 1.4-3.28 0 0 .12.68.22 1.43 0 0-.75 1.27-1.58 2.44-.75.95-1.82 1.6-3.08 1.85-.24-.15-.47-.34-.69-.55 0 0 .12-.58.04-1.23 0 0-.63-.77-1.77-.54-.84.18-1.61.88-2.04 1.72 0 0 .91 1.85.74 4.47-.63.14-1.24.38-1.79.69 0 0-.64-.3-.75-1.69 0 0-.5-1.42-.2-2.32.35-1.06 1.55-2.15 3.13-2.48.06-.39.2-1.67.11-2.23 0 0-1.43.7-2.99.53-.47-.04-.9-.17-1.29-.36 0 0-.14.78-.29 2.06-.22 1.32-1.4 2.36-2.2 2.97 0 0 .08.67.08 1.66 0 1.05-.1 2.49-.64 3.37-.42.68-1.01.98-1.65 1.12 0 0 .02.69.02 1.33z"/>
+      </svg>
+    </a>
+    <p class="version">v1.0.0</p>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+{
+  "manifest_version": 3,
+  "name": "YT-DLP Downloader",
+  "version": "1.0.0",
+  "description": "Download YouTube videos using yt-dlp power. Extract in multiple qualities, audio-only streams, and subtitles.",
+  "author": "Tusar Kanta Marei",
+  
+  "homepage_url": "https://github.com/Tusar-05/YT-DLP",
+  
+  "permissions": [
+    "downloads",
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://www.youtube-nocookie.com/*"
+  ],
+  
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "YT-DLP Downloader",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/icon16.png",
+        "icons/icon48.png",
+        "icons/icon128.png"
+      ],
+      "matches": ["*://*.youtube.com/*"]
+    }
+  ],
+  
+  "minimum_chrome_version": "86",
+  
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0x...",
+  
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "YT-DLP-Downloader",
+        "enabled": true,
+        "path": "ruleset.json"
+      }
+    ]
+  }
+}
